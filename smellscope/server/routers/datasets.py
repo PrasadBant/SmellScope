@@ -75,6 +75,7 @@ async def upload_dataset(
     file_sha = hasher.hexdigest()
 
     # If label_col and benign_label are provided, attempt immediate load
+    loaded_successfully = False
     if label_col and benign_label:
         try:
             loaded = load_dataset(
@@ -83,8 +84,35 @@ async def upload_dataset(
                 benign_label=benign_label,
             )
             dataset_registry.register(dataset_id, loaded, name=safe_filename)
-        except Exception as exc:
+            loaded_successfully = True
+        except Exception:
             pass  # User can still validate later
+
+    if not loaded_successfully:
+        # Extract columns and row count estimate from the uploaded file for preview
+        try:
+            if suffix == ".parquet":
+                sample_df = pd.read_parquet(dest_path)
+                columns = [str(c) for c in sample_df.columns]
+                n_rows = len(sample_df)
+            else:
+                sample_df = pd.read_csv(dest_path, nrows=50)
+                columns = [str(c) for c in sample_df.columns]
+                with open(dest_path, "r", encoding="utf-8", errors="ignore") as f:
+                    n_rows = max(0, sum(1 for _ in f) - 1)
+        except Exception:
+            columns = []
+            n_rows = 0
+
+        dataset_registry.register_raw(
+            dataset_id=dataset_id,
+            path=str(dest_path),
+            name=safe_filename,
+            sha256=file_sha,
+            size_bytes=size_bytes,
+            columns=columns,
+            n_rows=n_rows,
+        )
 
     return DatasetUploadResponse(
         dataset_id=dataset_id,
@@ -99,41 +127,85 @@ async def upload_dataset(
 def get_dataset_metadata(dataset_id: str) -> DatasetMetadataResponse:
     """Retrieve metadata, schema, and class distribution for a registered dataset."""
     ds = dataset_registry.get(dataset_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")
+    if ds:
+        meta = ds["meta"]
+        df = ds["df"]
+        feature_cols = [c for c in df.columns if c not in ("__row_id", ds["label_col"])]
 
-    meta = ds["meta"]
-    df = ds["df"]
-    feature_cols = [c for c in df.columns if c not in ("__row_id", ds["label_col"])]
+        return DatasetMetadataResponse(
+            dataset_id=dataset_id,
+            source_basename=meta.get("source_basename", dataset_id),
+            sha256=meta.get("sha256", "unknown"),
+            n_rows_raw=meta.get("n_rows_raw", len(df)),
+            n_rows_loaded=len(df),
+            dropped_inf_nan=meta.get("dropped_inf_nan", 0),
+            label_col=ds["label_col"],
+            benign_label=ds["benign_label"],
+            schema_id=ds.get("schema_id", "unknown"),
+            column_roles=ds.get("column_roles", {}),
+            class_counts=meta.get("class_counts", {}),
+            columns=feature_cols,
+            status="validated",
+        )
 
-    return DatasetMetadataResponse(
-        dataset_id=dataset_id,
-        source_basename=meta.get("source_basename", dataset_id),
-        sha256=meta.get("sha256", "unknown"),
-        n_rows_raw=meta.get("n_rows_raw", len(df)),
-        n_rows_loaded=len(df),
-        dropped_inf_nan=meta.get("dropped_inf_nan", 0),
-        label_col=ds["label_col"],
-        benign_label=ds["benign_label"],
-        schema_id=ds.get("schema_id", "unknown"),
-        column_roles=ds.get("column_roles", {}),
-        class_counts=meta.get("class_counts", {}),
-        columns=feature_cols,
-    )
+    raw = dataset_registry.get_raw(dataset_id)
+    if raw:
+        return DatasetMetadataResponse(
+            dataset_id=dataset_id,
+            source_basename=raw.get("name", dataset_id),
+            sha256=raw.get("sha256", "unknown"),
+            n_rows_raw=raw.get("n_rows_raw", 0),
+            n_rows_loaded=raw.get("n_rows_loaded", 0),
+            dropped_inf_nan=0,
+            label_col="",
+            benign_label="",
+            schema_id="pending",
+            column_roles={},
+            class_counts={},
+            columns=raw.get("columns", []),
+            status="pending_validation",
+        )
+
+    raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")
 
 
 @router.get("/{dataset_id}/preview", response_model=DatasetPreviewResponse)
 def get_dataset_preview(dataset_id: str, limit: int = 50) -> DatasetPreviewResponse:
     """Return a bounded data preview and data-quality inspection summary."""
     ds = dataset_registry.get(dataset_id)
-    if not ds:
-        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")
-
-    df = ds["df"]
-    label_col = ds["label_col"]
-    preview_df = df.head(min(limit, 100))
-
-    columns = [str(c) for c in df.columns]
+    if ds:
+        df = ds["df"]
+        label_col = ds["label_col"]
+        preview_df = df.head(min(limit, 100))
+        columns = [str(c) for c in df.columns]
+        class_counts = {str(k): int(v) for k, v in df[label_col].value_counts().items()}
+        missing_counts = {str(c): int(df[c].isna().sum()) for c in df.columns if df[c].isna().sum() > 0}
+        inf_counts = {}
+        for c in df.columns:
+            if pd.api.types.is_numeric_dtype(df[c]):
+                cnt = int(np.isinf(df[c]).sum())
+                if cnt > 0:
+                    inf_counts[str(c)] = cnt
+        total_rows = len(df)
+    else:
+        raw = dataset_registry.get_raw(dataset_id)
+        if not raw:
+            raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")
+        file_path = Path(raw["path"])
+        if file_path.suffix.lower() == ".parquet":
+            preview_df = pd.read_parquet(file_path).head(min(limit, 100))
+        else:
+            preview_df = pd.read_csv(file_path, nrows=min(limit, 100))
+        columns = [str(c) for c in preview_df.columns]
+        class_counts = {}
+        missing_counts = {str(c): int(preview_df[c].isna().sum()) for c in preview_df.columns if preview_df[c].isna().sum() > 0}
+        inf_counts = {}
+        for c in preview_df.columns:
+            if pd.api.types.is_numeric_dtype(preview_df[c]):
+                cnt = int(np.isinf(preview_df[c]).sum())
+                if cnt > 0:
+                    inf_counts[str(c)] = cnt
+        total_rows = raw.get("n_rows_raw", len(preview_df))
 
     # Convert preview to records with null sanitization
     records = []
@@ -151,19 +223,9 @@ def get_dataset_preview(dataset_id: str, limit: int = 50) -> DatasetPreviewRespo
                 rec[col] = str(val)
         records.append(rec)
 
-    missing_counts = {str(c): int(df[c].isna().sum()) for c in df.columns if df[c].isna().sum() > 0}
-    inf_counts = {}
-    for c in df.columns:
-        if pd.api.types.is_numeric_dtype(df[c]):
-            cnt = int(np.isinf(df[c]).sum())
-            if cnt > 0:
-                inf_counts[str(c)] = cnt
-
-    class_counts = {str(k): int(v) for k, v in df[label_col].value_counts().items()}
-
     return DatasetPreviewResponse(
         dataset_id=dataset_id,
-        total_rows=len(df),
+        total_rows=total_rows,
         total_columns=len(columns),
         columns=columns,
         preview_rows=records,
@@ -177,11 +239,16 @@ def get_dataset_preview(dataset_id: str, limit: int = 50) -> DatasetPreviewRespo
 def validate_dataset(dataset_id: str, req: DatasetValidateRequest) -> DatasetValidateResponse:
     """Run real schema and dataset validation with configured label and benign targets."""
     # Find dataset file if not yet loaded
-    upload_dir = Path(os.environ.get("SMELLSCOPE_DATA_DIR", "./data")) / "uploads"
+    raw = dataset_registry.get_raw(dataset_id)
     target_path = None
-    for f in upload_dir.glob(f"{dataset_id}_*"):
-        target_path = f
-        break
+    if raw and Path(raw["path"]).exists():
+        target_path = Path(raw["path"])
+
+    if not target_path:
+        upload_dir = Path(os.environ.get("SMELLSCOPE_DATA_DIR", "./data")) / "uploads"
+        for f in upload_dir.glob(f"{dataset_id}_*"):
+            target_path = f
+            break
 
     if not target_path:
         # Check samples
@@ -206,7 +273,7 @@ def validate_dataset(dataset_id: str, req: DatasetValidateRequest) -> DatasetVal
             benign_label=req.benign_label,
             cfg={"sampling": {"max_rows_per_class": req.max_rows_per_class, "seed": req.seed}},
         )
-        dataset_registry.register(dataset_id, loaded)
+        dataset_registry.register(dataset_id, loaded, name=raw.get("name") if raw else None)
 
         df = loaded["df"]
         classes = sorted([str(c) for c in df[loaded["label_col"]].unique()])

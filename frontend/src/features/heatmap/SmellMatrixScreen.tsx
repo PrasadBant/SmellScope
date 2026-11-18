@@ -53,6 +53,7 @@ export const SmellMatrixScreen: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<"heatmap" | "table">("heatmap");
   const [showPublished, setShowPublished] = useState(false);
+  const [publishedData, setPublishedData] = useState<Record<string, any> | null>(null);
   const [hoveredCell, setHoveredCell] = useState<{ cls: string; heur: HeuristicKey } | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -61,6 +62,29 @@ export const SmellMatrixScreen: React.FC = () => {
       loadRunResults(activeRunId);
     }
   }, [activeRunId]);
+
+  useEffect(() => {
+    if (showPublished && !publishedData) {
+      api.getPublishedValues()
+        .then((res) => setPublishedData(res.benchmarks))
+        .catch((err) => console.error("Failed to load published benchmarks:", err));
+    }
+  }, [showPublished]);
+
+  const getPublishedValueForClass = (className: string, heur: HeuristicKey): number | null | undefined => {
+    if (!publishedData) return undefined;
+    const norm = className.toLowerCase().replace(/[\s_-]/g, "");
+    for (const dsKey of Object.keys(publishedData)) {
+      const classes = publishedData[dsKey]?.classes || {};
+      for (const [k, v] of Object.entries<any>(classes)) {
+        const clsNorm = (v.label || k).toLowerCase().replace(/[\s_-]/g, "");
+        if (norm === clsNorm) {
+          return v[heur];
+        }
+      }
+    }
+    return undefined;
+  };
 
   const loadRunResults = async (runId: string) => {
     setLoading(true);
@@ -206,6 +230,7 @@ export const SmellMatrixScreen: React.FC = () => {
 
                         {(["UGT", "WL", "HDF", "PDD", "TC"] as HeuristicKey[]).map((heur) => {
                           const val = cls.paper[heur];
+                          const pubVal = showPublished ? getPublishedValueForClass(cls.class, heur) : undefined;
                           const colorClasses = getHeuristicColor(val, heur);
                           return (
                             <button
@@ -216,11 +241,17 @@ export const SmellMatrixScreen: React.FC = () => {
                                 setActiveStage("DIAGNOSE");
                                 navigate("/diagnostics");
                               }}
-                              className={`h-11 rounded border font-mono font-bold text-xs flex flex-col items-center justify-center transition-all ${colorClasses}`}
+                              className={`h-12 rounded border font-mono font-bold text-xs flex flex-col items-center justify-center transition-all ${colorClasses}`}
                             >
                               <span>{val !== null ? val.toFixed(3) : "N/A"}</span>
-                              {val === null && cls.na_reasons[`paper.${heur}`] && (
-                                <span className="text-[9px] font-sans opacity-75">reason</span>
+                              {pubVal !== undefined ? (
+                                <span className="text-[9px] font-sans font-normal opacity-90 text-accent-cyan">
+                                  Ref: {pubVal !== null ? pubVal.toFixed(2) : "N/A"}
+                                </span>
+                              ) : (
+                                val === null && cls.na_reasons[`paper.${heur}`] && (
+                                  <span className="text-[9px] font-sans opacity-75">reason</span>
+                                )
                               )}
                             </button>
                           );
@@ -277,6 +308,54 @@ export const SmellMatrixScreen: React.FC = () => {
                 )}
               </CardContent>
             </Card>
+
+            {showPublished && publishedData && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <ExternalLink className="h-4 w-4 text-accent-cyan" />
+                    Flood et al. EuroS&P 2024 Published Reference Values
+                  </CardTitle>
+                  <CardDescription>
+                    Empirical heuristic baselines reported in Table 8 & Table 9 of the published literature.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-border bg-bg-elevated text-[11px] uppercase tracking-wider text-txt-muted">
+                          <th className="p-2.5">Dataset</th>
+                          <th className="p-2.5">Class</th>
+                          <th className="p-2.5 font-mono text-center">PDD</th>
+                          <th className="p-2.5 font-mono text-center">TC</th>
+                          <th className="p-2.5 font-mono text-center">WL</th>
+                          <th className="p-2.5 font-mono text-center">HDF</th>
+                          <th className="p-2.5 font-mono text-center">UGT</th>
+                          <th className="p-2.5">Source Citation</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60 font-mono">
+                        {Object.entries(publishedData).flatMap(([dsKey, dsVal]: [string, any]) =>
+                          Object.entries(dsVal.classes || {}).map(([clsKey, clsVal]: [string, any]) => (
+                            <tr key={`${dsKey}_${clsKey}`} className="hover:bg-bg-elevated/40">
+                              <td className="p-2.5 font-sans font-bold text-txt-primary">{dsVal.dataset || dsKey}</td>
+                              <td className="p-2.5 font-sans text-txt-primary">{clsVal.label || clsKey}</td>
+                              <td className="p-2.5 text-center">{clsVal.PDD !== null ? clsVal.PDD.toFixed(2) : "—"}</td>
+                              <td className="p-2.5 text-center">{clsVal.TC !== null ? clsVal.TC.toFixed(2) : "—"}</td>
+                              <td className="p-2.5 text-center">{clsVal.WL !== null ? clsVal.WL.toFixed(2) : "—"}</td>
+                              <td className="p-2.5 text-center">{clsVal.HDF !== null ? clsVal.HDF.toFixed(2) : "—"}</td>
+                              <td className="p-2.5 text-center">{clsVal.UGT !== null ? clsVal.UGT.toFixed(2) : "—"}</td>
+                              <td className="p-2.5 font-sans text-[11px] text-txt-muted">{clsVal.source || dsVal.source}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Right Column: Hover Inspector & Heuristic Explanations */}

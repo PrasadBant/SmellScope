@@ -60,7 +60,7 @@ def apply_remediation_action(run_id: str, req: RemediationApplyRequest) -> Remed
             change_log_entry=log_entry,
         )
     except SmellScopeError as sse:
-        status_code = 403 if "RSM" in sse.code else 400
+        status_code = 403 if "BLOCK" in sse.code else 400
         raise HTTPException(
             status_code=status_code,
             detail={"code": sse.code, "message": sse.message, "details": sse.details},

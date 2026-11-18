@@ -17,6 +17,7 @@ import { useAuditContext } from "@/stores/AuditContext";
 import { api } from "@/api/client";
 import { ClassAuditResult, FragilityGridResponse } from "@/types/api";
 import { formatPercent } from "@/utils/cn";
+import { SfiDecayPlot } from "./SfiDecayPlot";
 
 export const ShortcutDiagnosticsScreen: React.FC = () => {
   const { activeRunId, selectedClass, setSelectedClass, latestRunResult, setLatestRunResult } = useAuditContext();
@@ -148,77 +149,13 @@ export const ShortcutDiagnosticsScreen: React.FC = () => {
               <CardContent>
                 {sfi && sfi.fragility_curve.delta.length > 0 ? (
                   <div className="space-y-4">
-                    {/* Visual Curve Representation */}
-                    <div className="h-64 w-full bg-bg-elevated/40 rounded-xl border border-border/80 p-4 relative flex flex-col justify-between">
-                      <div className="flex justify-between items-center text-xs text-txt-muted">
-                        <span>Recall Response</span>
-                        <div className="flex items-center gap-4">
-                          <span className="flex items-center gap-1.5 text-accent-cyan font-bold">
-                            <span className="h-2 w-4 bg-accent-cyan rounded" /> Top Feature ({sfi.top_features[0]})
-                          </span>
-                          <span className="flex items-center gap-1.5 text-txt-muted">
-                            <span className="h-2 w-4 bg-gray-500 rounded stroke-dasharray" /> Monte Carlo Null Mean
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* SVG Vector Plot */}
-                      <svg className="w-full h-44 overflow-visible" viewBox="0 0 500 160">
-                        {/* Grid lines */}
-                        <line x1="40" y1="20" x2="480" y2="20" stroke="#263244" strokeDasharray="3,3" />
-                        <line x1="40" y1="80" x2="480" y2="80" stroke="#263244" strokeDasharray="3,3" />
-                        <line x1="40" y1="140" x2="480" y2="140" stroke="#263244" />
-                        <line x1="40" y1="20" x2="40" y2="140" stroke="#263244" />
-
-                        {/* Y-axis labels */}
-                        <text x="25" y="24" fill="#94A3B8" fontSize="10" textAnchor="end">1.0</text>
-                        <text x="25" y="84" fill="#94A3B8" fontSize="10" textAnchor="end">0.5</text>
-                        <text x="25" y="144" fill="#94A3B8" fontSize="10" textAnchor="end">0.0</text>
-
-                        {/* Plot Top Feature Curve */}
-                        {(() => {
-                          const deltas = sfi.fragility_curve.delta;
-                          const recalls = sfi.fragility_curve.recall_top;
-                          const nullRecalls = sfi.fragility_curve.recall_null_mean;
-
-                          const ptsTop = deltas.map((d, i) => {
-                            const x = 40 + (d / 1.0) * 440;
-                            const r = recalls[i] ?? 0;
-                            const y = 140 - r * 120;
-                            return `${x},${y}`;
-                          }).join(" ");
-
-                          const ptsNull = deltas.map((d, i) => {
-                            const x = 40 + (d / 1.0) * 440;
-                            const r = nullRecalls[i] ?? 0;
-                            const y = 140 - r * 120;
-                            return `${x},${y}`;
-                          }).join(" ");
-
-                          return (
-                            <>
-                              <polyline fill="none" stroke="#64748B" strokeWidth="2" strokeDasharray="4,4" points={ptsNull} />
-                              <polyline fill="none" stroke="#38BDF8" strokeWidth="3" points={ptsTop} />
-                              {deltas.map((d, i) => {
-                                const x = 40 + (d / 1.0) * 440;
-                                const r = recalls[i] ?? 0;
-                                const y = 140 - r * 120;
-                                return <circle key={i} cx={x} cy={y} r="3.5" fill="#38BDF8" />;
-                              })}
-                            </>
-                          );
-                        })()}
-                      </svg>
-
-                      {/* X-axis labels */}
-                      <div className="flex justify-between text-[10px] text-txt-muted px-8 font-mono">
-                        <span>&delta; = 0.0 (Clean)</span>
-                        <span>&delta; = 0.25</span>
-                        <span>&delta; = 0.50</span>
-                        <span>&delta; = 0.75</span>
-                        <span>&delta; = 1.0 (Full Permutation)</span>
-                      </div>
-                    </div>
+                    {/* Interactive Plotly SFI Decay Curve */}
+                    <SfiDecayPlot
+                      deltas={sfi.fragility_curve.delta}
+                      recallTop={sfi.fragility_curve.recall_top}
+                      recallNullMean={sfi.fragility_curve.recall_null_mean}
+                      topFeatureName={sfi.top_features[0] || "Candidate"}
+                    />
 
                     <div className="grid grid-cols-3 gap-3 text-xs font-mono">
                       <div className="rounded p-2.5 bg-bg-card border border-border">

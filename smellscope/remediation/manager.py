@@ -67,6 +67,72 @@ def new_training_view(
     return view
 
 
+def _evaluate_quarantine_mask(
+    df: pd.DataFrame,
+    rule_name: str,
+    target_classes: List[str],
+    cfg: Optional[Dict[str, Any]],
+    ds: Dict[str, Any],
+) -> pd.Series:
+    """Evaluate candidate flow quarantine boolean mask consistently for propose and apply."""
+    rules_cfg = (cfg or {}).get("rules", {})
+    rule_spec = rules_cfg.get(rule_name)
+    label_col = ds["label_col"]
+
+    if rule_spec:
+        schema_id = ds.get("schema_id", "unknown")
+        col_target = rule_spec.get("target_column_by_schema", {}).get(schema_id)
+        if not col_target or col_target not in df.columns:
+            col_target = ds.get("column_roles", {}).get("dst_port")
+
+        if not col_target or col_target not in df.columns:
+            raise SmellScopeError(
+                code=E_RULE_UNAVAILABLE,
+                message=f"Target column for rule '{rule_name}' not found in dataset.",
+                details={"rule": rule_name, "schema_id": schema_id},
+            )
+        threshold = rule_spec.get("threshold", 0)
+        op = rule_spec.get("operator", "gt")
+        if op == "gt":
+            return (df[col_target] > threshold) & (df[label_col].isin(target_classes))
+        elif op == "eq":
+            return (df[col_target] == threshold) & (df[label_col].isin(target_classes))
+        else:
+            return pd.Series(False, index=df.index)
+
+    # Fallback heuristic rules
+    if rule_name == "quarantine_ephemeral_ports":
+        port_col = ds.get("column_roles", {}).get("dst_port")
+        if not port_col or port_col not in df.columns:
+            raise SmellScopeError(
+                code=E_RULE_UNAVAILABLE,
+                message=f"Rule '{rule_name}' requires destination port column, but none found.",
+                details={"rule": rule_name},
+            )
+        return (df[port_col] > 49151) & (df[label_col].isin(target_classes))
+
+    elif rule_name == "quarantine_zero_window":
+        win_col = None
+        for candidate in ("Init_Win_bytes_backward", "swin", "window"):
+            if candidate in df.columns:
+                win_col = candidate
+                break
+        if not win_col:
+            raise SmellScopeError(
+                code=E_RULE_UNAVAILABLE,
+                message=f"Rule '{rule_name}' requires TCP window column, but none found.",
+                details={"rule": rule_name},
+            )
+        return (df[win_col] == 0) & (df[label_col].isin(target_classes))
+
+    else:
+        raise SmellScopeError(
+            code=E_RULE_UNAVAILABLE,
+            message=f"Remediation rule '{rule_name}' is not registered.",
+            details={"available_rules": list(rules_cfg.keys())},
+        )
+
+
 def propose_remediation(
     ds: Dict[str, Any],
     split: Dict[str, Any],
@@ -91,7 +157,7 @@ def propose_remediation(
     label_col = ds["label_col"]
     benign_label = ds["benign_label"]
     action = options.get("action", "R1")
-    params = options.get("params", {})
+    params = options.get("params") or {k: v for k, v in options.items() if k != "action"}
 
     current_train_ids = set(view["_included_row_ids"])
     train_df = df[df["__row_id"].isin(current_train_ids)].copy()
@@ -158,61 +224,15 @@ def propose_remediation(
     elif action == "R2":
         # Candidate flow quarantine
         rule_name = params.get("rule", "")
-        rules_cfg = cfg.get("rules", {})
-        rule_spec = rules_cfg.get(rule_name)
-
         target_classes = params.get("classes") or [c for c in classes if str(c) != benign_label]
 
-        if not rule_spec:
-            # Fallback heuristic rules
-            if rule_name == "quarantine_ephemeral_ports":
-                port_col = ds.get("column_roles", {}).get("dst_port")
-                if not port_col or port_col not in train_df.columns:
-                    raise SmellScopeError(
-                        code=E_RULE_UNAVAILABLE,
-                        message=f"Rule '{rule_name}' requires destination port column, but none found.",
-                        details={"rule": rule_name},
-                    )
-                cond_mask = (train_df[port_col] > 49151) & (train_df[label_col].isin(target_classes))
-            elif rule_name == "quarantine_zero_window":
-                win_col = None
-                for candidate in ("Init_Win_bytes_backward", "swin", "window"):
-                    if candidate in train_df.columns:
-                        win_col = candidate
-                        break
-                if not win_col:
-                    raise SmellScopeError(
-                        code=E_RULE_UNAVAILABLE,
-                        message=f"Rule '{rule_name}' requires TCP window column, but none found.",
-                        details={"rule": rule_name},
-                    )
-                cond_mask = (train_df[win_col] == 0) & (train_df[label_col].isin(target_classes))
-            else:
-                raise SmellScopeError(
-                    code=E_RULE_UNAVAILABLE,
-                    message=f"Remediation rule '{rule_name}' is not registered.",
-                    details={"available_rules": list(rules_cfg.keys())},
-                )
-        else:
-            schema_id = ds.get("schema_id", "unknown")
-            col_target = rule_spec.get("target_column_by_schema", {}).get(schema_id)
-            if not col_target or col_target not in train_df.columns:
-                col_target = ds.get("column_roles", {}).get("dst_port")
-
-            if not col_target or col_target not in train_df.columns:
-                raise SmellScopeError(
-                    code=E_RULE_UNAVAILABLE,
-                    message=f"Target column for rule '{rule_name}' not found in dataset.",
-                    details={"rule": rule_name, "schema_id": schema_id},
-                )
-            threshold = rule_spec.get("threshold", 0)
-            op = rule_spec.get("operator", "gt")
-            if op == "gt":
-                cond_mask = (train_df[col_target] > threshold) & (train_df[label_col].isin(target_classes))
-            elif op == "eq":
-                cond_mask = (train_df[col_target] == threshold) & (train_df[label_col].isin(target_classes))
-            else:
-                cond_mask = pd.Series(False, index=train_df.index)
+        cond_mask = _evaluate_quarantine_mask(
+            df=train_df,
+            rule_name=rule_name,
+            target_classes=target_classes,
+            cfg=cfg,
+            ds=ds,
+        )
 
         quarantined_ids = set(train_df.loc[cond_mask, "__row_id"])
         affected_row_count = len(quarantined_ids)
@@ -267,6 +287,8 @@ def propose_remediation(
             "after": after_train_size,
         },
     }
+
+    preview["rsm_report"] = check_rsm(preview, policy=cfg.get("rsm", {}).get("policy") if cfg else None)
 
     return preview
 
@@ -326,14 +348,13 @@ def apply_remediation(
         rule_name = params.get("rule", "")
         target_classes = params.get("classes") or [c for c in train_subset[ds["label_col"]].unique() if str(c) != ds["benign_label"]]
 
-        if rule_name == "quarantine_ephemeral_ports":
-            port_col = ds.get("column_roles", {}).get("dst_port")
-            cond = (train_subset[port_col] > 49151) & (train_subset[ds["label_col"]].isin(target_classes))
-        elif rule_name == "quarantine_zero_window":
-            win_col = "Init_Win_bytes_backward" if "Init_Win_bytes_backward" in train_subset.columns else "swin"
-            cond = (train_subset[win_col] == 0) & (train_subset[ds["label_col"]].isin(target_classes))
-        else:
-            cond = pd.Series(False, index=train_subset.index)
+        cond = _evaluate_quarantine_mask(
+            df=train_subset,
+            rule_name=rule_name,
+            target_classes=target_classes,
+            cfg=cfg,
+            ds=ds,
+        )
 
         quarantined_set = set(train_subset.loc[cond, "__row_id"])
         new_train_ids = [rid for rid in current_train_ids if rid not in quarantined_set]

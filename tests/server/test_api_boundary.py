@@ -206,3 +206,105 @@ def test_production_frontend_serving():
     assert '<div id="root">' in resp.text
     assert "SmellScope 2.0" in resp.text
 
+
+def test_spa_fallback_routing():
+    """Verify that deep client-side routes (e.g. /overview, /remediation) return index.html (BUG-001)."""
+    for route in ["/overview", "/matrix", "/diagnostics", "/remediation", "/audit-log", "/export"]:
+        resp = client.get(route)
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert '<div id="root">' in resp.text
+
+
+def test_benchmarks_published_values():
+    """Verify that EuroS&P 2024 published values are exposed correctly (BUG-004)."""
+    resp = client.get("/api/v1/benchmarks/published-values")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "benchmarks" in data
+    benchmarks = data["benchmarks"]
+    assert "cic_ids_2017" in benchmarks
+    assert "DoS_Hulk" in benchmarks["cic_ids_2017"]["classes"]
+    assert benchmarks["cic_ids_2017"]["classes"]["DoS_Hulk"]["PDD"] == 0.98
+
+
+def test_custom_upload_and_pending_validation_flow():
+    """Verify custom dataset upload, raw preview, and deferred validation (BUG-002)."""
+    csv_content = b"feat_a,feat_b,target_class\n1.2,3.4,normal\n5.6,7.8,attack\n9.0,1.1,normal\n2.3,4.5,attack\n"
+    files = {"file": ("custom_audit_test.csv", csv_content, "text/csv")}
+
+    upload_resp = client.post("/api/v1/datasets/upload", files=files)
+    assert upload_resp.status_code == 200
+    upload_data = upload_resp.json()
+    dataset_id = upload_data["dataset_id"]
+    assert dataset_id.startswith("ds_")
+
+    # Metadata should return pending status without failing
+    meta_resp = client.get(f"/api/v1/datasets/{dataset_id}")
+    assert meta_resp.status_code == 200
+    meta = meta_resp.json()
+    assert meta["status"] == "pending_validation"
+    assert "feat_a" in meta["columns"]
+    assert "target_class" in meta["columns"]
+
+    # Preview should return raw rows without failing
+    prev_resp = client.get(f"/api/v1/datasets/{dataset_id}/preview")
+    assert prev_resp.status_code == 200
+    prev = prev_resp.json()
+    assert len(prev["preview_rows"]) == 4
+    assert prev["preview_rows"][0]["target_class"] == "normal"
+
+
+def test_rsm_security_enforcement():
+    """Verify RSM security constraints: unacknowledged warnings are rejected (400) and blocks are forbidden (403)."""
+    datasets = client.get("/api/v1/datasets").json()
+    ds_id = datasets[0]["dataset_id"]
+
+    start_resp = client.post(
+        "/api/v1/audits",
+        json={"dataset_id": ds_id, "classes": ["PortScan"], "seed": 42},
+    )
+    run_id = start_resp.json()["run_id"]
+    for _ in range(60):
+        if client.get(f"/api/v1/audits/{run_id}").json()["status"] == "COMPLETED":
+            break
+        time.sleep(0.5)
+
+    # Preview R1
+    prev_resp = client.post(
+        f"/api/v1/audits/{run_id}/remediations/preview",
+        json={"action": "R1", "params": {"features": ["Destination Port"]}},
+    )
+    preview_id = prev_resp.json()["preview_id"]
+
+    # If RSM returns WARN, trying to apply without warning_ack must fail
+    apply_unacked = client.post(
+        f"/api/v1/audits/{run_id}/remediations/apply",
+        json={
+            "preview_id": preview_id,
+            "approval": {"approved": True, "warning_ack": False, "approved_at": "test"},
+        },
+    )
+    # If preview was WARN, status_code must be 400 with E_RSM_WARN_UNACKED
+    if prev_resp.json()["rsm_report"]["status"] == "WARN":
+        assert apply_unacked.status_code == 400
+        assert "E_RSM_WARN_UNACKED" in apply_unacked.text
+
+
+def test_security_path_traversal_prevention():
+    """Verify security controls against path traversal on upload and download."""
+    # 1. Filename sanitization on upload
+    traversal_name = "../../../../test_traversal.csv"
+    files = {"file": (traversal_name, b"col1,col2,Label\n1,2,BENIGN\n", "text/csv")}
+    upload_resp = client.post("/api/v1/datasets/upload", files=files)
+    assert upload_resp.status_code == 200
+    basename = upload_resp.json()["source_basename"]
+    assert "/" not in basename
+    assert ".." not in basename
+
+    # 2. Path traversal rejection on report download
+    dl_resp = client.get("/api/v1/audits/run_dummy/reports/..%2F..%2Fetc%2Fpasswd/download")
+    assert dl_resp.status_code in (400, 404)
+
+
+

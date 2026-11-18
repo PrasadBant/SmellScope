@@ -20,12 +20,13 @@ import { RemediationPreview, ViewsResponse, TrainingView, ChangeLogEntry } from 
 import { formatNumber, formatPercent } from "@/utils/cn";
 
 export const RemediationScreen: React.FC = () => {
-  const { activeRunId, latestRunResult, setLatestRunResult, setActiveStage } = useAuditContext();
+  const { activeDatasetId, activeRunId, latestRunResult, setLatestRunResult, setActiveStage } = useAuditContext();
 
   const [viewsData, setViewsData] = useState<ViewsResponse | null>(null);
   const [selectedAction, setSelectedAction] = useState<"R1" | "R2">("R1");
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
   const [selectedRule, setSelectedRule] = useState<string>("quarantine_ephemeral_ports");
+  const [datasetFeatures, setDatasetFeatures] = useState<string[]>([]);
   const [preview, setPreview] = useState<RemediationPreview | null>(null);
   const [warningAck, setWarningAck] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -38,6 +39,17 @@ export const RemediationScreen: React.FC = () => {
       loadViews(activeRunId);
     }
   }, [activeRunId]);
+
+  useEffect(() => {
+    const dsId = activeDatasetId || (latestRunResult ? latestRunResult.dataset.name : null);
+    if (dsId) {
+      api.getDatasetMetadata(dsId)
+        .then((m) => {
+          if (m?.columns) setDatasetFeatures(m.columns);
+        })
+        .catch(console.error);
+    }
+  }, [activeDatasetId, latestRunResult]);
 
   // Set default features from candidate shortcuts
   useEffect(() => {
@@ -133,12 +145,12 @@ export const RemediationScreen: React.FC = () => {
     );
   }
 
-  const allColumns = latestRunResult
-    ? Object.keys(latestRunResult.dataset.class_counts).length > 0
-      ? latestRunResult.classes.flatMap((c) => c.sfi.top_features)
-      : []
+  const candidateShortcuts = latestRunResult
+    ? latestRunResult.classes.flatMap((c) => c.sfi.top_features)
     : [];
-  const uniqueCandidateFeatures = Array.from(new Set(allColumns));
+  const uniqueCandidateFeatures = Array.from(
+    new Set([...candidateShortcuts, ...datasetFeatures])
+  );
 
   const activeView = viewsData?.active_view;
   const rsmReport = preview?.rsm_report;
@@ -234,21 +246,29 @@ export const RemediationScreen: React.FC = () => {
                 <div className="max-h-48 overflow-y-auto space-y-1.5 rounded-lg border border-border bg-bg-main/50 p-2 text-xs">
                   {uniqueCandidateFeatures.map((feat) => {
                     const isChecked = selectedFeatures.includes(feat);
+                    const isShortcut = candidateShortcuts.includes(feat);
                     return (
                       <label
                         key={feat}
-                        className="flex items-center gap-2 p-1.5 rounded hover:bg-bg-elevated cursor-pointer select-none"
+                        className="flex items-center justify-between p-1.5 rounded hover:bg-bg-elevated cursor-pointer select-none"
                       >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedFeatures([...selectedFeatures, feat]);
-                            else setSelectedFeatures(selectedFeatures.filter((f) => f !== feat));
-                          }}
-                          className="rounded border-border text-accent-primary focus:ring-accent-primary bg-bg-elevated"
-                        />
-                        <span className="font-mono text-txt-primary truncate">{feat}</span>
+                        <div className="flex items-center gap-2 truncate">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedFeatures([...selectedFeatures, feat]);
+                              else setSelectedFeatures(selectedFeatures.filter((f) => f !== feat));
+                            }}
+                            className="rounded border-border text-accent-primary focus:ring-accent-primary bg-bg-elevated"
+                          />
+                          <span className="font-mono text-txt-primary truncate">{feat}</span>
+                        </div>
+                        {isShortcut && (
+                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-semibold shrink-0">
+                            Shortcut
+                          </span>
+                        )}
                       </label>
                     );
                   })}

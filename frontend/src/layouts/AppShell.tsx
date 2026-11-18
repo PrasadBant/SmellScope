@@ -223,6 +223,15 @@ export const AppShell: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
+
+        {/* Scientific Disclaimer Footer Banner */}
+        <footer className="border-t border-border/80 bg-bg-card/90 px-6 py-2 text-[11px] text-txt-muted flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-3.5 w-3.5 text-accent-cyan shrink-0" />
+            <span>SmellScope is a scientific benchmark dataset auditor, NOT an active intrusion detection system.</span>
+          </div>
+          <span className="hidden sm:inline font-mono text-[10px] text-txt-muted/70">Local-First · Zero Remote Telemetry</span>
+        </footer>
       </div>
 
       {/* Methodology Help Modal */}

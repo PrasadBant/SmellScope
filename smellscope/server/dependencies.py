@@ -35,6 +35,7 @@ class DatasetRegistry:
         self._lock = threading.Lock()
         self._datasets: Dict[str, Dict[str, Any]] = {}
         self._metadata: Dict[str, Dict[str, Any]] = {}
+        self._raw_files: Dict[str, Dict[str, Any]] = {}
         self._auto_load_samples()
 
     def _auto_load_samples(self):
@@ -78,7 +79,41 @@ class DatasetRegistry:
                 "n_rows_loaded": len(loaded_ds["df"]),
                 "sha256": loaded_ds["meta"]["sha256"],
                 "source_basename": loaded_ds["meta"]["source_basename"],
+                "status": "validated",
             }
+
+    def register_raw(
+        self,
+        dataset_id: str,
+        path: str,
+        name: str,
+        sha256: str,
+        size_bytes: int,
+        columns: List[str],
+        n_rows: int,
+    ) -> None:
+        with self._lock:
+            self._raw_files[dataset_id] = {
+                "dataset_id": dataset_id,
+                "path": path,
+                "name": name,
+                "source_basename": name,
+                "sha256": sha256,
+                "size_bytes": size_bytes,
+                "columns": columns,
+                "n_rows_raw": n_rows,
+                "n_rows_loaded": n_rows,
+                "label_col": "",
+                "benign_label": "",
+                "schema_id": "pending",
+                "status": "pending_validation",
+            }
+            if dataset_id not in self._metadata:
+                self._metadata[dataset_id] = self._raw_files[dataset_id]
+
+    def get_raw(self, dataset_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return self._raw_files.get(dataset_id)
 
     def get(self, dataset_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
@@ -194,11 +229,20 @@ class AuditJobManager:
         if (runs_dir / "results.json").exists():
             try:
                 cached_data = load_cached_run(run_id)
-                job = AuditJob(run_id=run_id, dataset_id="disk_cached")
+                dataset_name = cached_data.get("dataset", {}).get("name", "disk_cached")
+                job = AuditJob(run_id=run_id, dataset_id=dataset_name)
                 job.status = "COMPLETED"
                 job.progress_percent = 100.0
                 job.result = cached_data
                 job.elapsed_seconds = cached_data.get("runtime", {}).get("total_seconds", 0.0)
+
+                # Restore split manifest from disk
+                split_file = runs_dir / "split_manifest.json"
+                if split_file.exists():
+                    import json
+                    with open(split_file, "r", encoding="utf-8") as sf:
+                        job.split = json.load(sf)
+
                 with self._lock:
                     self._jobs[run_id] = job
                 return job

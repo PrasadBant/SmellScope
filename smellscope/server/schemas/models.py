@@ -31,13 +31,14 @@ class DatasetMetadataResponse(BaseModel):
     sha256: str
     n_rows_raw: int
     n_rows_loaded: int
-    dropped_inf_nan: int
-    label_col: str
-    benign_label: str
-    schema_id: str
-    column_roles: Dict[str, Optional[str]]
-    class_counts: Dict[str, int]
+    dropped_inf_nan: int = 0
+    label_col: str = ""
+    benign_label: str = ""
+    schema_id: str = "unknown"
+    column_roles: Dict[str, Optional[str]] = Field(default_factory=dict)
+    class_counts: Dict[str, int] = Field(default_factory=dict)
     columns: List[str]
+    status: str = "validated"
 
 
 class DatasetPreviewResponse(BaseModel):
@@ -182,7 +183,7 @@ class FragilityGridRequest(BaseModel):
 
 class FragilityGridResponse(BaseModel):
     features: List[str]
-    grid_delta: List[List[float]]
+    grid_delta: List[Any]
     recall: List[List[Optional[float]]]
     recall_baseline: Optional[float]
 

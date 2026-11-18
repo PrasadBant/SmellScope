@@ -30,9 +30,12 @@ export const App: React.FC = () => {
               <Route path="/overview" element={<OverviewScreen />} />
               <Route path="/ingestion" element={<IngestionScreen />} />
               <Route path="/heatmap" element={<SmellMatrixScreen />} />
+              <Route path="/matrix" element={<Navigate to="/heatmap" replace />} />
               <Route path="/diagnostics" element={<ShortcutDiagnosticsScreen />} />
               <Route path="/remediation" element={<RemediationScreen />} />
               <Route path="/reports" element={<ReportsScreen />} />
+              <Route path="/export" element={<Navigate to="/reports" replace />} />
+              <Route path="/audit-log" element={<Navigate to="/reports" replace />} />
               <Route path="*" element={<Navigate to="/overview" replace />} />
             </Route>
           </Routes>

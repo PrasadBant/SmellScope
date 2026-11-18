@@ -117,4 +117,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ include_rebenchmark: includeRebenchmark }),
     }),
+
+  // Benchmarks Reference Values
+  getPublishedValues: () => request<{ benchmarks: Record<string, any> }>("/benchmarks/published-values"),
 };

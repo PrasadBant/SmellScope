@@ -57,13 +57,21 @@ def generate_report(run_id: str, req: ReportGenerateRequest) -> ReportGenerateRe
 
 @router.get("/{report_id}/download")
 def download_report(run_id: str, report_id: str) -> FileResponse:
-    """Download the generated offline HTML report."""
-    reports_dir = Path(os.environ.get("SMELLSCOPE_HOME", "./reports"))
-    matches = list(reports_dir.glob(f"{report_id}_*"))
-    if not matches or not matches[0].exists():
-        raise HTTPException(status_code=404, detail=f"Report '{report_id}' not found.")
+    """Download the generated offline HTML report with strict path traversal prevention."""
+    import re
+    clean_id = re.sub(r"[^\w\-]", "", os.path.basename(report_id))
+    if not clean_id:
+        raise HTTPException(status_code=400, detail="Invalid report identifier.")
 
-    target = matches[0]
+    reports_dir = Path(os.environ.get("SMELLSCOPE_HOME", "./reports")).resolve()
+    matches = list(reports_dir.glob(f"{clean_id}_*"))
+    if not matches or not matches[0].exists():
+        raise HTTPException(status_code=404, detail=f"Report '{clean_id}' not found.")
+
+    target = matches[0].resolve()
+    if not target.is_relative_to(reports_dir):
+        raise HTTPException(status_code=403, detail="Access denied: path traversal detected.")
+
     return FileResponse(
         path=target,
         media_type="text/html",
