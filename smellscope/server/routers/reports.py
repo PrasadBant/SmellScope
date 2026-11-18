@@ -32,6 +32,14 @@ def generate_report(run_id: str, req: ReportGenerateRequest) -> ReportGenerateRe
         rebenchmark_res = remediation_session_manager.get_last_rebenchmark(run_id)
         change_log = remediation_session_manager.get_change_log(run_id)
 
+    dataset_scores = None
+    recommendations = None
+    try:
+        dataset_scores = remediation_session_manager.get_dataset_scores(run_id)
+        recommendations = remediation_session_manager.get_recommendations(run_id)
+    except Exception:
+        pass
+
     report_id = f"rep_{uuid.uuid4().hex[:8]}"
     reports_dir = Path(os.environ.get("SMELLSCOPE_HOME", "./reports"))
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -43,6 +51,8 @@ def generate_report(run_id: str, req: ReportGenerateRequest) -> ReportGenerateRe
             rebenchmark_result=rebenchmark_res,
             change_log=change_log,
             output_path=str(out_file),
+            dataset_scores=dataset_scores,
+            recommendations=recommendations,
         )
         return ReportGenerateResponse(
             report_id=report_id,

@@ -125,6 +125,8 @@ export const api = {
   getRecommendations: (runId: string) =>
     request<{ run_id: string; recommendations: any[]; generated_at: string }>(`/audits/${runId}/recommendations`),
 
+  getDatasetScores: (runId: string) => request<any>(`/audits/${runId}/scores`),
+
   createRepairPlanPreview: (runId: string, selectedRecs: any[]) =>
     request<any>(`/audits/${runId}/repair-plan/preview`, {
       method: "POST",

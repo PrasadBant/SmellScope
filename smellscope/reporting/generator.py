@@ -18,6 +18,8 @@ def generate_offline_html_report(
     rebenchmark_result: Optional[Dict[str, Any]] = None,
     change_log: Optional[List[Dict[str, Any]]] = None,
     output_path: Optional[str] = None,
+    dataset_scores: Optional[Dict[str, Any]] = None,
+    recommendations: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Generate a self-contained, offline HTML report from real audit results.
 
@@ -26,6 +28,8 @@ def generate_offline_html_report(
         rebenchmark_result: Optional RebenchmarkResult dictionary.
         change_log: Optional list of ChangeLogEntry dictionaries.
         output_path: Optional output file path. Defaults to reports/<run_id>.html.
+        dataset_scores: Optional 4-dimension assessment dictionary.
+        recommendations: Optional list of repair recommendations.
 
     Returns:
         Absolute path to the generated HTML report file.
@@ -174,6 +178,91 @@ def generate_offline_html_report(
             </thead>
             <tbody>
               {''.join(log_rows)}
+            </tbody>
+          </table>
+        </div>
+        """
+
+    # Scoring assessment HTML block
+    scores_html = ""
+    if dataset_scores:
+        overall = dataset_scores.get("overall_score", 0.0)
+        overall_cat = dataset_scores.get("overall_category", {})
+        dims = dataset_scores.get("dimensions", {})
+        dq = dims.get("data_quality", {})
+        nids = dims.get("nids_suitability", {})
+        sc = dims.get("shortcut_risk", {})
+        rel = dims.get("evaluation_reliability", {})
+
+        scores_html = f"""
+        <div class="card mb-4" style="border: 1px solid rgba(99, 102, 241, 0.4);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+              <h2 class="card-title" style="margin-bottom: 4px;">Authoritative Dataset Trust Assessment</h2>
+              <p class="text-muted" style="font-size: 13px;">Decomposed 4-dimension scientific scoring (Version {dataset_scores.get('scoring_version', '1.0.0')}) Â· Evidence Coverage: {int(dataset_scores.get('evidence_coverage', 0) * 100)}%</p>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 32px; font-weight: 800; font-family: ui-monospace, monospace; color: {overall_cat.get('color', '#16A34A')};">{overall:.1f}</span><span style="font-size: 16px; color: var(--text-muted);"> / 100</span>
+              <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: {overall_cat.get('color', '#16A34A')};">{overall_cat.get('label', 'Good')}</div>
+            </div>
+          </div>
+          <div class="grid-4" style="margin-bottom: 16px;">
+            <div style="background: var(--bg-elevated); padding: 14px; border-radius: 6px; border: 1px solid var(--border);">
+              <div class="metric-val" style="color: {dq.get('category', {}).get('color', '#16A34A')};">{dq.get('score', 0.0):.1f}</div>
+              <div class="metric-lbl">Data Quality (0-100)</div>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{dq.get('summary', '')}</p>
+            </div>
+            <div style="background: var(--bg-elevated); padding: 14px; border-radius: 6px; border: 1px solid var(--border);">
+              <div class="metric-val" style="color: {nids.get('category', {}).get('color', '#16A34A')};">{nids.get('score', 0.0):.1f}</div>
+              <div class="metric-lbl">NIDS Suitability (0-100)</div>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{nids.get('summary', '')}</p>
+            </div>
+            <div style="background: var(--bg-elevated); padding: 14px; border-radius: 6px; border: 1px solid var(--border);">
+              <div class="metric-val" style="color: {sc.get('category', {}).get('color', '#DC2626')};">{sc.get('score', 0.0):.1f}</div>
+              <div class="metric-lbl">Shortcut Risk (0-100, High=Risk)</div>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{sc.get('summary', '')}</p>
+            </div>
+            <div style="background: var(--bg-elevated); padding: 14px; border-radius: 6px; border: 1px solid var(--border);">
+              <div class="metric-val" style="color: {rel.get('category', {}).get('color', '#16A34A')};">{rel.get('score', 0.0):.1f}</div>
+              <div class="metric-lbl">Evaluation Reliability (0-100)</div>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">{rel.get('summary', '')}</p>
+            </div>
+          </div>
+        </div>
+        """
+
+    # Recommendations HTML block
+    recommendations_html = ""
+    if recommendations:
+        rec_rows = []
+        for r in recommendations:
+            sev_color = "#DC2626" if r.get("severity") == "HIGH" else "#D97706" if r.get("severity") == "MEDIUM" else "#94A3B8"
+            rsm_tier = r.get("rsm_tier", "PASS")
+            rsm_color = "#16A34A" if rsm_tier == "PASS" else "#D97706"
+            rec_rows.append(f"""
+            <tr>
+              <td class="font-bold">{r.get('problem_name', '')}</td>
+              <td><span class="badge" style="background-color: {sev_color}22; color: {sev_color}; border: 1px solid {sev_color}66;">{r.get('severity', '')}</span></td>
+              <td class="text-sm">{r.get('detected', '')}</td>
+              <td class="text-sm text-muted">{r.get('suggested_correction', '')}</td>
+              <td><span class="badge" style="background-color: {rsm_color}22; color: {rsm_color}; border: 1px solid {rsm_color}66;">{rsm_tier}</span></td>
+            </tr>
+            """)
+        recommendations_html = f"""
+        <div class="card mb-4">
+          <h2 class="card-title">Intelligent Repair Recommendations ({len(recommendations)})</h2>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Problem</th>
+                <th>Severity</th>
+                <th>Detected Evidence</th>
+                <th>Recommended Action</th>
+                <th>RSM Safety Tier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {''.join(rec_rows)}
             </tbody>
           </table>
         </div>
@@ -385,6 +474,8 @@ def generate_offline_html_report(
       </div>
     </div>
 
+    {scores_html}
+
     <div class="card">
       <h2 class="card-title">Cross-Class Smell Matrix (Heuristic & Shortcut Audit)</h2>
       <p class="text-muted mb-2">Metrics: UGT (Unassigned Port Traffic), WL (Window Length Anomaly), HDF (High Dimension Feature Dominance), PDD (Partition Distance Disparity), TC (Temporal Concentration), SFI (Shortcut Fragility Index), GGI (Generalisation Gap).</p>
@@ -409,6 +500,8 @@ def generate_offline_html_report(
         </tbody>
       </table>
     </div>
+
+    {recommendations_html}
 
     {rebenchmark_html}
 

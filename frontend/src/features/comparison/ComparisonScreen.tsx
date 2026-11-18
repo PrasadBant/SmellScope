@@ -11,6 +11,7 @@ import {
   Minus,
   CheckCircle2,
   Wrench,
+  ShieldCheck,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +21,11 @@ import { api } from "@/api/client";
 import { cn } from "@/utils/cn";
 
 type ComparisonData = {
+  scores?: {
+    before: Record<string, any>;
+    after: Record<string, any>;
+    delta: Record<string, number>;
+  };
   data_quality: {
     before: Record<string, any>;
     after: Record<string, any>;
@@ -205,6 +211,117 @@ export const ComparisonScreen: React.FC = () => {
         </div>
         <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
       </div>
+
+      {/* Scientific Trust & Quality Scores Comparison */}
+      {data.scores && (
+        <Card className="border-accent-primary/40 bg-gradient-to-b from-accent-primary/5 to-transparent">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-accent-secondary" />
+                  Dataset Trust & Quality Scores (Before vs. After)
+                </CardTitle>
+                <p className="text-xs text-txt-muted mt-0.5">
+                  Dynamic recalculation of all four scientific dimensions and overall trust score.
+                </p>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-accent-primary/10 border border-accent-primary/30 text-accent-secondary">
+                v{data.scores.before?.scoring_version || "1.0.0"}
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="pb-2 text-left text-xs font-semibold text-txt-muted">Scoring Dimension</th>
+                    <th className="pb-2 text-right text-xs font-semibold text-txt-muted">Before</th>
+                    <th className="pb-2 text-right text-xs font-semibold text-txt-muted">After</th>
+                    <th className="pb-2 text-right text-xs font-semibold text-txt-muted">Delta</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50 font-mono">
+                  <tr className="bg-bg-elevated/40 font-bold">
+                    <td className="py-2.5 text-xs font-sans text-txt-primary flex items-center gap-1.5">
+                      <span>Overall Trust Score</span>
+                      <span className="text-[10px] font-normal text-txt-muted font-sans">(Synthesized 0-100)</span>
+                    </td>
+                    <td className="py-2.5 text-right text-xs text-txt-primary">
+                      {data.scores.before?.overall_score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2.5 text-right text-xs text-txt-primary">
+                      {data.scores.after?.overall_score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <DeltaChip delta={data.scores.delta?.overall_score} invertGood />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 text-xs font-sans text-txt-secondary">
+                      Data Quality Score <span className="text-[10px] text-txt-muted">(Hygiene & Completeness)</span>
+                    </td>
+                    <td className="py-2 text-right text-xs text-txt-muted">
+                      {data.scores.before?.dimensions?.data_quality?.score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2 text-right text-xs text-txt-muted">
+                      {data.scores.after?.dimensions?.data_quality?.score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2 text-right">
+                      <DeltaChip delta={data.scores.delta?.data_quality} invertGood />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 text-xs font-sans text-txt-secondary">
+                      NIDS Research Suitability <span className="text-[10px] text-txt-muted">(Telemetry & Diversity)</span>
+                    </td>
+                    <td className="py-2 text-right text-xs text-txt-muted">
+                      {data.scores.before?.dimensions?.nids_suitability?.score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2 text-right text-xs text-txt-muted">
+                      {data.scores.after?.dimensions?.nids_suitability?.score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2 text-right">
+                      <DeltaChip delta={data.scores.delta?.nids_suitability} invertGood />
+                    </td>
+                  </tr>
+                  <tr className="bg-amber-500/5">
+                    <td className="py-2 text-xs font-sans text-amber-300 font-semibold flex items-center gap-1">
+                      <span>Shortcut & Leakage Risk</span>
+                      <span className="text-[10px] text-amber-400/80 font-normal">(⚠️ Inverted: Lower = Safer)</span>
+                    </td>
+                    <td className="py-2 text-right text-xs text-amber-400">
+                      {data.scores.before?.dimensions?.shortcut_risk?.score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2 text-right text-xs text-amber-400 font-bold">
+                      {data.scores.after?.dimensions?.shortcut_risk?.score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2 text-right">
+                      {/* delta < 0 is GOOD for risk, so invertGood={false} */}
+                      <DeltaChip delta={data.scores.delta?.shortcut_risk} invertGood={false} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 text-xs font-sans text-txt-secondary">
+                      Evaluation Reliability <span className="text-[10px] text-txt-muted">(Locked Test Isolation)</span>
+                    </td>
+                    <td className="py-2 text-right text-xs text-txt-muted">
+                      {data.scores.before?.dimensions?.evaluation_reliability?.score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2 text-right text-xs text-txt-muted">
+                      {data.scores.after?.dimensions?.evaluation_reliability?.score?.toFixed(1) ?? "—"}
+                    </td>
+                    <td className="py-2 text-right">
+                      <DeltaChip delta={data.scores.delta?.evaluation_reliability} invertGood />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Data Quality Comparison */}
       <Card>

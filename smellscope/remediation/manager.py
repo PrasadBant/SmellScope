@@ -918,7 +918,59 @@ def get_dataset_comparison(
         target_class=target_class,
     )
 
+    # Comprehensive before vs after 4-dimension dataset assessment
+    from smellscope.scoring import compute_overall_dataset_assessment
+
+    before_scores = compute_overall_dataset_assessment(
+        df=orig_df,
+        label_col=label_col,
+        benign_label=ds.get("benign_label", "BENIGN"),
+        split=split,
+        baseline_eval=ml_rebenchmark.get("before"),
+        roles=ds.get("column_roles"),
+        cfg=cfg,
+    )
+
+    after_scores = compute_overall_dataset_assessment(
+        df=rem_df,
+        label_col=label_col,
+        benign_label=ds.get("benign_label", "BENIGN"),
+        split=split,
+        baseline_eval=ml_rebenchmark.get("after"),
+        roles=ds.get("column_roles"),
+        cfg=cfg,
+    )
+
+    scores_delta = {
+        "overall_score": round(after_scores["overall_score"] - before_scores["overall_score"], 2),
+        "data_quality": round(
+            after_scores["dimensions"]["data_quality"]["score"]
+            - before_scores["dimensions"]["data_quality"]["score"],
+            2,
+        ),
+        "nids_suitability": round(
+            after_scores["dimensions"]["nids_suitability"]["score"]
+            - before_scores["dimensions"]["nids_suitability"]["score"],
+            2,
+        ),
+        "shortcut_risk": round(
+            after_scores["dimensions"]["shortcut_risk"]["score"]
+            - before_scores["dimensions"]["shortcut_risk"]["score"],
+            2,
+        ),
+        "evaluation_reliability": round(
+            after_scores["dimensions"]["evaluation_reliability"]["score"]
+            - before_scores["dimensions"]["evaluation_reliability"]["score"],
+            2,
+        ),
+    }
+
     return {
+        "scores": {
+            "before": before_scores,
+            "after": after_scores,
+            "delta": scores_delta,
+        },
         "data_quality": {
             "before": dq_before,
             "after": dq_after,

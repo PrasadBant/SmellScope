@@ -5,10 +5,13 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
+    confusion_matrix,
     f1_score,
     precision_recall_fscore_support,
-    confusion_matrix,
+    roc_auc_score,
 )
+from sklearn.preprocessing import label_binarize
 
 from smellscope.core.preprocess import fit_preprocessor
 
@@ -94,6 +97,36 @@ def fit_and_evaluate(
 
     cm = confusion_matrix(y_test, preds, labels=unique_labels).tolist()
 
+    fpr = float(1.0 - tnr)
+    fnr = float(1.0 - tpr)
+
+    # ROC-AUC and PR-AUC calculation where mathematically applicable
+    roc_auc: Optional[float] = None
+    pr_auc: Optional[float] = None
+
+    try:
+        if hasattr(rf, "predict_proba") and n_test > 0:
+            probs = rf.predict_proba(X_test)
+            rf_classes = list(rf.classes_)
+            if target_class is not None:
+                # Binary classification
+                if target_class in rf_classes and len(set(y_test)) == 2:
+                    target_idx = rf_classes.index(target_class)
+                    target_probs = probs[:, target_idx]
+                    y_bin = (y_test == target_class).astype(int)
+                    roc_auc = float(roc_auc_score(y_bin, target_probs))
+                    pr_auc = float(average_precision_score(y_bin, target_probs))
+            else:
+                # Multiclass OvR
+                test_classes = set(y_test)
+                if len(test_classes) >= 2 and all(c in test_classes for c in rf_classes):
+                    y_bin = label_binarize(y_test, classes=rf_classes)
+                    roc_auc = float(roc_auc_score(y_bin, probs, average="macro", multi_class="ovr"))
+                    pr_auc = float(average_precision_score(y_bin, probs, average="macro"))
+    except Exception:
+        roc_auc = None
+        pr_auc = None
+
     return {
         "acc": acc,
         "f1": f1,
@@ -101,6 +134,10 @@ def fit_and_evaluate(
         "weighted_f1": weighted_f1,
         "tpr": tpr,
         "tnr": tnr,
+        "fpr": fpr,
+        "fnr": fnr,
+        "roc_auc": roc_auc,
+        "pr_auc": pr_auc,
         "confusion_matrix": cm,
         "labels": [str(l) for l in unique_labels],
         "per_class": per_class,

@@ -24,6 +24,15 @@ from smellscope.remediation.manager import (
 )
 from smellscope.remediation.rsm import check_rsm
 from smellscope.reporting.generator import generate_offline_html_report
+from smellscope.scoring import (
+    SCORING_VERSION,
+    compute_data_quality_score,
+    compute_evaluation_reliability_score,
+    compute_nids_suitability_score,
+    compute_overall_dataset_assessment,
+    compute_shortcut_risk_score,
+    get_default_scoring_config,
+)
 
 
 def get_default_config() -> Dict[str, Any]:
@@ -219,6 +228,26 @@ def export_results_json(run_id: str, path: str) -> str:
     return str(out_p.resolve())
 
 
+def score_dataset(
+    ds: Dict[str, Any],
+    audit_result: Optional[Dict[str, Any]] = None,
+    split: Optional[Dict[str, Any]] = None,
+    baseline_eval: Optional[Dict[str, Any]] = None,
+    cfg: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Calculate the 4-dimension dataset assessment score and synthesis for a loaded dataset."""
+    return compute_overall_dataset_assessment(
+        df=ds["df"],
+        label_col=ds["label_col"],
+        benign_label=ds.get("benign_label", "BENIGN"),
+        audit_result=audit_result,
+        split=split,
+        baseline_eval=baseline_eval,
+        roles=ds.get("column_roles"),
+        cfg=cfg,
+    )
+
+
 __all__ = [
     "load_config",
     "get_default_config",
@@ -239,4 +268,12 @@ __all__ = [
     "get_change_log",
     "export_results_json",
     "generate_offline_html_report",
+    "score_dataset",
+    "compute_overall_dataset_assessment",
+    "compute_data_quality_score",
+    "compute_nids_suitability_score",
+    "compute_shortcut_risk_score",
+    "compute_evaluation_reliability_score",
+    "get_default_scoring_config",
+    "SCORING_VERSION",
 ]

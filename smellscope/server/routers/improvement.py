@@ -65,6 +65,20 @@ async def get_recommendations(run_id: str):
     )
 
 
+@router.get(
+    "/audits/{run_id}/scores",
+    summary="Get 4-dimension dataset assessment and overall trust score",
+)
+async def get_dataset_scores_endpoint(run_id: str):
+    """Calculate and return the 4-dimension scoring system results and breakdown."""
+    _assert_completed(run_id)
+    try:
+        scores = remediation_session_manager.get_dataset_scores(run_id)
+    except SmellScopeError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+    return scores
+
+
 @router.post(
     "/audits/{run_id}/repair-plan/preview",
     response_model=RepairPlanPreviewResponse,

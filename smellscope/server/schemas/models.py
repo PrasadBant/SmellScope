@@ -342,6 +342,7 @@ class RepairPlanApplyResponse(BaseModel):
 
 
 class DatasetComparisonResponse(BaseModel):
+    scores: Optional[Dict[str, Any]] = None
     data_quality: Dict[str, Any]
     ml_benchmark: Dict[str, Any]
     test_integrity: Dict[str, Any]

@@ -466,6 +466,22 @@ class RemediationSessionManager:
                 target_class=target_class,
             )
 
+    def get_dataset_scores(self, run_id: str) -> Dict[str, Any]:
+        with self._lock:
+            ds, split = self._ensure_initialized(run_id)
+            job = self._job_manager.get_job(run_id)
+            active_view = self._views[run_id][-1]
+            train_subset = ds["df"][ds["df"]["__row_id"].isin(active_view["_included_row_ids"])]
+            from smellscope.scoring import compute_overall_dataset_assessment
+            return compute_overall_dataset_assessment(
+                df=train_subset,
+                label_col=ds["label_col"],
+                benign_label=ds.get("benign_label", "BENIGN"),
+                audit_result=job.result if job else None,
+                split=split,
+                roles=ds.get("column_roles"),
+            )
+
     def get_export_metadata(self, run_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
             return self._exports.get(run_id)
