@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Sliders,
   ShieldCheck,
@@ -25,6 +26,7 @@ import { RemediationPreview, ViewsResponse, TrainingView, ChangeLogEntry } from 
 import { formatNumber, formatPercent } from "@/utils/cn";
 
 export const RemediationScreen: React.FC = () => {
+  const navigate = useNavigate();
   const {
     activeDatasetId,
     activeRunId,
@@ -192,6 +194,27 @@ export const RemediationScreen: React.FC = () => {
           )
         }
       />
+
+      {/* Optional Stage Notice Banner */}
+      <div className="rounded-xl border border-border bg-bg-card p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Badge variant="secondary">OPTIONAL WORKFLOW STAGE</Badge>
+          <span className="text-xs text-txt-muted">
+            Remediation is optional. You can skip this step and generate a report on your original benchmark dataset at any time.
+          </span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setActiveStage("REPORTS");
+            navigate("/reports");
+          }}
+          className="text-xs shrink-0"
+        >
+          Skip to Reports &rarr;
+        </Button>
+      </div>
 
       {message && (
         <div

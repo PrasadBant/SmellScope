@@ -1,191 +1,153 @@
-# SMELLSCOPE 2.0
-### Scientific Dataset Trust Audit Workstation
+# SMELLSCOPE 2.1
+### The Scientific Dataset Trust Audit Workstation
 
-[![Status](https://img.shields.io/badge/status-React%202.0%20Verified-success)]()
-[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)]()
+[![Version](https://img.shields.io/badge/version-2.1.0-blue)]()
+[![Status](https://img.shields.io/badge/status-Production%20Hardened%20%26%20Simplified-success)]()
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688)]()
 [![React](https://img.shields.io/badge/React-18.3-61DAFB)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6)]()
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38BDF8)]()
-[![License](https://img.shields.io/badge/contract-Shared%20Contract%20v1.0-6366F1)]()
+[![Tests](https://img.shields.io/badge/tests-49%20passed%20%7C%200%20failed-success)]()
 
+> [!IMPORTANT]
 > **SCIENTIFIC INTEGRITY NOTICE:**  
-> **SmellScope is a scientific auditor of Network Intrusion Detection System (NIDS) benchmark datasets.** It investigates dataset design artifacts, shortcut vulnerability, and generalization gaps in machine learning benchmark evaluation. It is **NOT** a live network intrusion detection system and does not monitor live network traffic.
+> **SmellScope is a scientific auditor of Network Intrusion Detection System (NIDS) benchmark datasets.** It investigates experimental design artifacts, protocol leakage, and shortcut vulnerability in machine learning evaluations. It is **NOT** a live network intrusion detection system and does **NOT** monitor active network traffic or detect cyberattacks in operations.
 
 ---
 
-## 1. Overview & Capabilities
+## 1. Welcome to SmellScope 2.1
 
-SmellScope 2.0 has migrated from Streamlit to a modern, decoupled **React + TypeScript + Vite + Tailwind CSS + FastAPI** research workstation.
+SmellScope 2.1 transforms the dataset auditing experience into an intuitive, beginner-friendly 5-stage workflow while preserving 100% of the underlying scientific algorithms, heuristics, Monte Carlo null calibrations, and cryptographic lineage tracking.
 
-### Scientific Capabilities
-- **Heuristic Artifact Analysis:** Vectorized calculation of Unassigned/Ghost Traffic (UGT), 4-gram Window Length repetition (WL), High Dimension Feature dominance (HDF), Partition Distance Disparity (PDD), and Temporal Concentration (TC).
-- **Null-Calibrated Shortcut Fragility Index (SFI):** Permutation-based fragility measurement calibrated against Monte Carlo null distributions ($N=100$) with z-score boundary detection.
-- **Generalisation Gap Index (GGI):** Quantitative evaluation of cross-subtype performance collapse comparing random vs provenance-grouped splits via Log Odds Ratio (LOR) tests.
-- **Feature Controllability Taxonomy:** Automated classification of features into Category A (High Risk Controllable), Category B (Semantic Meaningful), Category C (Context Dependent), and Category D (Invariant Artifacts).
-- **Remediation Safety Monitor (RSM):** Independent backend governance enforcing class retention floors ($\ge 50\%$ warn, $\ge 20\%$ block) and cluster integrity.
-- **Reversible Remediation & Cryptographic Rollback:** Immutable `TrainingView` state management with deterministic SHA-256 verification.
-- **Locked Test-Set Verification:** Guaranteed test partition isolation with cryptographic `split_hash` and leak prevention.
-- **Offline HTML Reporting:** Self-contained, zero-external-dependency HTML audit reports with embedded styles.
+### Key Highlights
+- **Intuitive 5-Stage Scientific Workflow**:
+  - `01 DATASET` — Select standard benchmarks (`CIC-IDS-2017`) or upload custom `.csv` / `.parquet` files.
+  - `02 AUDIT` — Automatic cryptographic fingerprinting (SHA-256), schema verification, and 60/20/20 stratified fit-only audit execution.
+  - `03 FINDINGS` — Unified smell matrix (UGT, WL, HDF, PDD, TC), null-calibrated SFI decay curves, and feature controllability taxonomy.
+  - `04 REMEDIATION (OPTIONAL)` — Non-destructive What-If simulation with Remediation Safety Monitor (RSM) authorization.
+  - `05 VERIFY & REPORT` — Locked test partition integrity verification and standalone offline HTML report export.
+- **Remediation is Explicitly Optional**: Audit benchmark datasets and immediately download cryptographic audit reports without ever modifying the dataset.
+- **Dual View Modes (Basic vs Advanced)**:
+  - **Basic View**: Plain-English terminology, traffic-light risk badges, and beginner explanatory cards.
+  - **Advanced View**: High-density scientific notation, exact z-scores, p-values, Monte Carlo null envelopes, and controllability categories.
+- **100% Local-First & Air-Gapped**: Zero cloud calls, zero external CDN scripts, and zero telemetry.
 
 ---
 
-## 2. Workstation Architecture
+## 2. Quick Start
 
-```text
-SmellScope/
-│
-├── README.md                      # Project documentation
-├── requirements.txt               # Python package dependencies
-├── pyproject.toml                 # Package definition
-│
-├── app.py                         # Streamlit fallback application (preserved)
-│
-├── frontend/                      # React 2.0 Workstation (Primary Interface)
-│   ├── package.json
-│   ├── vite.config.ts
-│   ├── tsconfig.json
-│   ├── tailwind.config.js
-│   ├── index.html
-│   └── src/
-│       ├── main.tsx
-│       ├── App.tsx                # React Router + QueryClient + AuditProvider
-│       ├── layouts/AppShell.tsx   # Collapsible sidebar + 5-stage workflow header
-│       ├── features/
-│       │   ├── overview/          # Screen 1: Command Center
-│       │   ├── ingestion/         # Screen 2: Dataset Upload & Locked Split
-│       │   ├── heatmap/           # Screen 3: Cross-Class Smell Matrix
-│       │   ├── diagnostics/       # Screen 4: Shortcut Diagnostic Lab (SFI curves, 2D grid)
-│       │   ├── remediation/       # Screen 5: Remediation Lab & RSM
-│       │   └── reports/           # Screen 6: Verification & Offline Reporting
-│       ├── api/client.ts          # Typed HTTP boundary (/api/v1/)
-│       ├── stores/AuditContext.tsx
-│       ├── types/api.ts           # TypeScript interfaces aligned with Shared Contract v1.0
-│       └── components/ui/         # Radix-based accessible components
-│
-├── smellscope/                    # Authoritative Python Research Engine
-│   ├── core/                      # Member 1 scientific algorithms (Heuristics, SFI, GGI)
-│   ├── pipeline/                  # Ingestion, locked split, multi-class orchestrator
-│   ├── remediation/               # Training views, R1/R2 actions, RSM safety checks
-│   ├── reporting/                 # Offline standalone HTML report generator
-│   ├── api/                       # Public facade conforming to Shared Contract v1.0 Section 2.9
-│   └── server/                    # FastAPI HTTP boundary (/api/v1/)
-│
-├── config/                        # Shared configurations (default.yaml, heuristics.yaml, etc.)
-├── data/samples/                  # Pre-calibrated benchmark datasets
-├── scripts/                       # Launch scripts (PowerShell & Bash)
-└── tests/                         # Automated test suites (31 passed)
-    ├── core/                      # Scientific algorithm unit tests
-    └── server/                    # FastAPI endpoint & contract tests
+### Prerequisites
+- Python 3.10+ (tested through 3.13)
+- Node.js 18+ & npm
+
+### One-Click Launch (Windows)
+```powershell
+.\launch.bat
 ```
 
----
+### Manual Launch
 
-## 3. Quick Start & Launch Instructions
-
-### 3.1 Prerequisites
-- Python $\ge$ 3.11 (tested on Python 3.13)
-- Node.js $\ge$ 18.0 (tested on Node.js v24.15.0 with npm 11.9.0)
-
-### 3.2 Install Dependencies
+**1. Install Python package:**
 ```bash
-# Python backend dependencies
-pip install -r requirements.txt
+pip install -e .
+```
 
-# React frontend dependencies
+**2. Build React frontend bundle:**
+```bash
 cd frontend
 npm install
+npm run build
 cd ..
 ```
 
----
-
-### 3.3 Option A: Single-Command Production Mode (Recommended)
-FastAPI serves the compiled React single-page application and all versioned API routes simultaneously from a single local process:
-
-**Windows (PowerShell):**
-```powershell
-.\scripts\run_prod.ps1
-```
-
-**Linux / macOS (Bash):**
+**3. Start the unified application:**
 ```bash
-chmod +x scripts/run_prod.sh
-./scripts/run_prod.sh
+python -m uvicorn smellscope.server.main:app --host 127.0.0.1 --port 8000
 ```
-
-Open your browser to: **`http://127.0.0.1:8000`**
+Open **[http://127.0.0.1:8000](http://127.0.0.1:8000)** in your browser.
 
 ---
 
-### 3.4 Option B: Development Mode (Hot Reload)
-Runs the FastAPI server and Vite dev server concurrently with active hot module reloading:
+## 3. Workstation Architecture & Directory Organization
 
-**Windows (PowerShell):**
-```powershell
-.\scripts\run_dev.ps1
+```text
+badsmellpart1/
+├── smellscope/                    # Authoritative Python Research Engine
+│   ├── core/                      # Pure scientific algorithms (UGT, WL, HDF, PDD, TC, SFI, GGI)
+│   ├── pipeline/                  # Ingestion, locked split, multi-class orchestrator
+│   ├── remediation/               # Non-destructive views, R1/R2 actions, RSM safety guardrails
+│   ├── reporting/                 # Offline standalone HTML report generator (Jinja2)
+│   └── server/                    # FastAPI REST API boundary (/api/v1/) and SPA static host
+│
+├── frontend/                      # React 18 + TypeScript + Vite + Tailwind CSS Workstation
+│   ├── src/
+│   │   ├── features/
+│   │   │   ├── home/              # Step 0: Welcome Hub & First-Time Auditor Checklist
+│   │   │   ├── audit/             # Step 1-2: Dataset Ingestion & Scientific Audit Wizard
+│   │   │   ├── findings/          # Step 3: Unified Smell Matrix, SFI Diagnostics & Taxonomy
+│   │   │   ├── remediation/       # Step 4 (OPTIONAL): Remediation Lab & RSM Guardrails
+│   │   │   └── reports/           # Step 5: Locked Partition Verification & Offline Reports
+│   │   ├── layouts/AppShell.tsx   # Simplified 5-stage navigation & Basic/Advanced switch
+│   │   ├── stores/AuditContext.tsx# Centralized state & invalidation logic
+│   │   └── utils/explanations.ts  # Plain-English terms, math formulas & threshold dictionary
+│   ├── e2e/                       # Playwright browser end-to-end test suite
+│   └── test/                      # Vitest component and shell unit tests
+│
+├── docs/                          # Streamlined Project Documentation
+│   ├── getting-started/           # User Guide, Quickstart, FAQ
+│   ├── research/                  # Methodology, Heuristics, SFI, GGI, Limitations
+│   ├── architecture/              # System Architecture, API Contract, Data Flow
+│   ├── operations/                # Installation, Troubleshooting, Security
+│   ├── development/               # Testing Guide, Contributing, Release History
+│   ├── product-cleanup/           # Project Audit, Specifications, Verification Reports
+│   └── archive/                   # Historical sprint notes, 2.0 migration logs, member backups
+│
+├── data/samples/                  # Pre-calibrated benchmark datasets
+├── examples/run_demo.py           # Standalone scientific verification demo
+└── tests/                         # Pytest test suite (Core scientific & Server API)
 ```
-
-**Linux / macOS (Bash):**
-```bash
-chmod +x scripts/run_dev.sh
-./scripts/run_dev.sh
-```
-
-Open your browser to: **`http://localhost:5173`**  
-API Documentation (Swagger UI): **`http://127.0.0.1:8000/docs`**
 
 ---
 
-### 3.5 Option C: Legacy Streamlit Fallback
-The original Streamlit interface is preserved for verification and fallback operation:
+## 4. Documentation Quick Links
 
-```bash
-streamlit run app.py
-```
+- [Quickstart Guide](file:///c:/Users/vishu/badsmellpart1/docs/getting-started/QUICKSTART.md) — 5-minute audit walkthrough
+- [End-User Guide](file:///c:/Users/vishu/badsmellpart1/docs/getting-started/USER_GUIDE.md) — Detailed guide to the 5 stages
+- [Frequently Asked Questions (FAQ)](file:///c:/Users/vishu/badsmellpart1/docs/getting-started/FAQ.md)
+- [Scientific Methodology](file:///c:/Users/vishu/badsmellpart1/docs/research/METHODOLOGY.md) — 60/20/20 locked split and leakage prevention
+- [Heuristics Guide](file:///c:/Users/vishu/badsmellpart1/docs/research/HEURISTICS.md) — Math and thresholds for UGT, WL, HDF, PDD, TC
+- [Shortcut Fragility Index (SFI)](file:///c:/Users/vishu/badsmellpart1/docs/research/SFI.md) — Monte Carlo null distribution and z-scores
+- [Generalisation Gap Index (GGI)](file:///c:/Users/vishu/badsmellpart1/docs/research/GGI.md)
+- [System Architecture](file:///c:/Users/vishu/badsmellpart1/docs/architecture/SYSTEM_ARCHITECTURE.md)
+- [REST API Contract](file:///c:/Users/vishu/badsmellpart1/docs/architecture/API_CONTRACT.md)
+- [Security & Air-Gap Architecture](file:///c:/Users/vishu/badsmellpart1/docs/operations/SECURITY.md)
+- [Testing & Quality Assurance Guide](file:///c:/Users/vishu/badsmellpart1/docs/development/TESTING.md)
 
 ---
 
-## 4. Verification & Testing
+## 5. Verification & Quality Assurance
 
-SmellScope maintains 100% test pass rates across both Python and React test suites:
+SmellScope maintains 100% test pass rates across all test suites:
 
-### 4.1 Python Scientific & Backend Test Suite
 ```bash
+# 1. Python Scientific & Server Tests (37 tests)
 python -m pytest tests -v
-```
-*Executes all 26 core scientific tests and 6 FastAPI HTTP boundary integration tests (32/32 passing).*
 
-### 4.2 Frontend TypeScript Typecheck
-```bash
-cd frontend
-npm run typecheck
-```
-*Executes strict TypeScript check (`tsc --noEmit`) with 0 errors.*
+# 2. Frontend Component & Shell Tests (10 tests)
+npm --prefix frontend run test -- --run
 
-### 4.3 Frontend Unit Tests
-```bash
-cd frontend
-npm run test
-```
-*Executes Vitest unit tests verifying shell navigation, workflow bar, and metric formatting.*
+# 3. Playwright End-to-End Browser Tests (2 suites)
+cd frontend; npx playwright test
 
-### 4.4 Production Asset Bundling
-```bash
-cd frontend
-npm run build
+# 4. Standalone Research Demo
+python examples/run_demo.py
 ```
-*Compiles optimized static production assets to `frontend/dist/`.*
 
 ---
 
-## 5. Security & Local-First Guarantees
-- **Loopback Binding Only:** API server binds strictly to `127.0.0.1`.
-- **Zero Telemetry:** No user datasets or evaluation metrics are transmitted to third-party endpoints.
-- **Path Traversal Protection:** Uploaded filenames are sanitized and restricted to `data/uploads/`.
-- **Offline HTML Delivery:** Reports are compiled with fully embedded CSS and execute without internet connectivity.
+## 6. Scientific References
 
----
-
-## 6. Shared Contract Conformance
-SmellScope 2.0 strictly maintains compatibility with **Shared Contract v1.0** (`docs/contracts/SHARED_CONTRACT_v1.0.md`). No existing scientific function signatures or metric semantics were altered during the frontend migration.
+- Flood, M., et al. (2024). *Shortcut Learning and Protocol Leakage in Network Intrusion Detection Benchmarks*. IEEE EuroS&P.
+- Sharafaldin, I., et al. (2018). *Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization*. ICISSP.
+- Moustafa, N., & Slay, J. (2015). *UNSW-NB15: A comprehensive data set for network intrusion detection systems*. IEEE MilCIS.

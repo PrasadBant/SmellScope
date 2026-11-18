@@ -3,10 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuditProvider } from "@/stores/AuditContext";
 import { AppShell } from "@/layouts/AppShell";
-import { OverviewScreen } from "@/features/overview/OverviewScreen";
-import { IngestionScreen } from "@/features/ingestion/IngestionScreen";
-import { SmellMatrixScreen } from "@/features/heatmap/SmellMatrixScreen";
-import { ShortcutDiagnosticsScreen } from "@/features/diagnostics/ShortcutDiagnosticsScreen";
+import { HomeScreen } from "@/features/home/HomeScreen";
+import { NewAuditScreen } from "@/features/audit/NewAuditScreen";
+import { FindingsScreen } from "@/features/findings/FindingsScreen";
 import { RemediationScreen } from "@/features/remediation/RemediationScreen";
 import { ReportsScreen } from "@/features/reports/ReportsScreen";
 
@@ -26,17 +25,26 @@ export const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
             <Route element={<AppShell />}>
-              <Route path="/" element={<Navigate to="/overview" replace />} />
-              <Route path="/overview" element={<OverviewScreen />} />
-              <Route path="/ingestion" element={<IngestionScreen />} />
-              <Route path="/heatmap" element={<SmellMatrixScreen />} />
-              <Route path="/matrix" element={<Navigate to="/heatmap" replace />} />
-              <Route path="/diagnostics" element={<ShortcutDiagnosticsScreen />} />
+              {/* Primary 5-Stage Scientific Destinations */}
+              <Route path="/" element={<HomeScreen />} />
+              <Route path="/home" element={<Navigate to="/" replace />} />
+              <Route path="/overview" element={<HomeScreen />} />
+
+              <Route path="/audit" element={<NewAuditScreen />} />
+              <Route path="/ingestion" element={<NewAuditScreen />} />
+
+              <Route path="/findings" element={<FindingsScreen />} />
+              <Route path="/heatmap" element={<FindingsScreen />} />
+              <Route path="/matrix" element={<FindingsScreen />} />
+              <Route path="/diagnostics" element={<FindingsScreen />} />
+
               <Route path="/remediation" element={<RemediationScreen />} />
               <Route path="/reports" element={<ReportsScreen />} />
               <Route path="/export" element={<Navigate to="/reports" replace />} />
               <Route path="/audit-log" element={<Navigate to="/reports" replace />} />
-              <Route path="*" element={<Navigate to="/overview" replace />} />
+
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
         </BrowserRouter>

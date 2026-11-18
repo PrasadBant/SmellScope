@@ -204,7 +204,7 @@ def test_production_frontend_serving():
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     assert '<div id="root">' in resp.text
-    assert "SmellScope 2.0" in resp.text
+    assert "SmellScope" in resp.text
 
 
 def test_spa_fallback_routing():

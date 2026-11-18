@@ -4,7 +4,6 @@ import {
   ShieldAlert,
   Database,
   LayoutDashboard,
-  Grid3X3,
   Microscope,
   Sliders,
   FileCheck,
@@ -13,7 +12,7 @@ import {
   Activity,
   HelpCircle,
   Hash,
-  ExternalLink,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useAuditContext } from "@/stores/AuditContext";
@@ -25,35 +24,15 @@ interface NavItem {
   name: string;
   path: string;
   icon: React.ReactNode;
+  badge?: string;
 }
 
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
-
-const NAV_SECTIONS: NavSection[] = [
-  {
-    title: "WORKSPACE",
-    items: [
-      { name: "Overview", path: "/overview", icon: <LayoutDashboard className="h-4 w-4" /> },
-      { name: "Dataset Ingestion", path: "/ingestion", icon: <Database className="h-4 w-4" /> },
-    ],
-  },
-  {
-    title: "RESEARCH ANALYSIS",
-    items: [
-      { name: "Smell Matrix", path: "/heatmap", icon: <Grid3X3 className="h-4 w-4" /> },
-      { name: "Shortcut Diagnostics", path: "/diagnostics", icon: <Microscope className="h-4 w-4" /> },
-    ],
-  },
-  {
-    title: "EXPERIMENTATION",
-    items: [
-      { name: "Remediation Lab", path: "/remediation", icon: <Sliders className="h-4 w-4" /> },
-      { name: "Verification & Reports", path: "/reports", icon: <FileCheck className="h-4 w-4" /> },
-    ],
-  },
+const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { name: "Home", path: "/", icon: <LayoutDashboard className="h-4 w-4" /> },
+  { name: "New Audit", path: "/audit", icon: <Database className="h-4 w-4" /> },
+  { name: "Findings", path: "/findings", icon: <Microscope className="h-4 w-4" /> },
+  { name: "Remediation", path: "/remediation", icon: <Sliders className="h-4 w-4" />, badge: "OPTIONAL" },
+  { name: "Reports", path: "/reports", icon: <FileCheck className="h-4 w-4" /> },
 ];
 
 export const AppShell: React.FC = () => {
@@ -61,7 +40,7 @@ export const AppShell: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const { activeDatasetId, activeRunId, latestRunResult } = useAuditContext();
+  const { activeDatasetId, activeRunId, latestRunResult, viewMode, setViewMode } = useAuditContext();
 
   useEffect(() => {
     let mounted = true;
@@ -81,13 +60,27 @@ export const AppShell: React.FC = () => {
     };
   }, []);
 
+  const isNavActive = (itemPath: string) => {
+    const p = location.pathname;
+    if (itemPath === "/") {
+      return p === "/" || p === "/home" || p === "/overview";
+    }
+    if (itemPath === "/audit") {
+      return p === "/audit" || p === "/ingestion";
+    }
+    if (itemPath === "/findings") {
+      return p === "/findings" || p === "/heatmap" || p === "/diagnostics" || p === "/matrix";
+    }
+    return p.startsWith(itemPath);
+  };
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg-main text-txt-primary">
       {/* Left Sidebar */}
       <aside
         className={cn(
           "flex flex-col border-r border-border bg-bg-sidebar transition-all duration-300 select-none z-30 shrink-0",
-          collapsed ? "w-16" : "w-[250px]"
+          collapsed ? "w-16" : "w-[240px]"
         )}
       >
         {/* Brand Header */}
@@ -120,46 +113,49 @@ export const AppShell: React.FC = () => {
           </button>
         </div>
 
-        {/* Navigation Sections */}
-        <nav className="flex-1 space-y-5 overflow-y-auto px-2.5 py-4 scrollbar-thin">
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.title} className="space-y-1">
-              {!collapsed && (
-                <p className="px-2.5 py-1 text-[10px] font-bold tracking-widest text-txt-muted/80 uppercase">
-                  {section.title}
-                </p>
-              )}
-              {section.items.map((item) => {
-                const isActive = location.pathname === item.path;
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
+        {/* Primary Navigation */}
+        <nav className="flex-1 space-y-1 overflow-y-auto px-2.5 py-4 scrollbar-thin">
+          {!collapsed && (
+            <p className="px-2.5 py-1 text-[10px] font-bold tracking-widest text-txt-muted/80 uppercase">
+              WORKFLOW
+            </p>
+          )}
+          {PRIMARY_NAV_ITEMS.map((item) => {
+            const isActive = isNavActive(item.path);
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  "flex items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium transition-all group relative",
+                  isActive
+                    ? "bg-accent-primary/15 text-white font-semibold border border-accent-primary/30"
+                    : "text-txt-secondary hover:bg-bg-elevated/70 hover:text-txt-primary"
+                )}
+                title={collapsed ? item.name : undefined}
+              >
+                {isActive && (
+                  <span className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-accent-primary rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <span
                     className={cn(
-                      "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-all group relative",
-                      isActive
-                        ? "bg-accent-primary/15 text-white font-semibold border border-accent-primary/30"
-                        : "text-txt-secondary hover:bg-bg-elevated/70 hover:text-txt-primary"
+                      "transition-colors shrink-0",
+                      isActive ? "text-accent-secondary" : "text-txt-muted group-hover:text-txt-primary"
                     )}
-                    title={collapsed ? item.name : undefined}
                   >
-                    {isActive && (
-                      <span className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-accent-primary rounded-r" />
-                    )}
-                    <span
-                      className={cn(
-                        "transition-colors",
-                        isActive ? "text-accent-secondary" : "text-txt-muted group-hover:text-txt-primary"
-                      )}
-                    >
-                      {item.icon}
-                    </span>
-                    {!collapsed && <span className="truncate">{item.name}</span>}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
+                    {item.icon}
+                  </span>
+                  {!collapsed && <span className="truncate">{item.name}</span>}
+                </div>
+                {!collapsed && item.badge && (
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-bg-elevated text-txt-muted border border-border">
+                    {item.badge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Sidebar Status Footer */}
@@ -169,7 +165,7 @@ export const AppShell: React.FC = () => {
               <div className="flex items-center justify-between text-txt-muted">
                 <span className="text-[10px] uppercase tracking-wider">Dataset</span>
                 <span
-                  className="font-mono text-txt-primary font-semibold truncate max-w-[120px]"
+                  className="font-mono text-txt-primary font-semibold truncate max-w-[110px]"
                   title={activeDatasetId || "None"}
                 >
                   {activeDatasetId || "None"}
@@ -179,7 +175,7 @@ export const AppShell: React.FC = () => {
                 <div className="flex items-center justify-between text-txt-muted">
                   <span className="text-[10px] uppercase tracking-wider">Active Run</span>
                   <span
-                    className="font-mono text-accent-secondary font-semibold truncate max-w-[120px]"
+                    className="font-mono text-accent-secondary font-semibold truncate max-w-[110px]"
                     title={activeRunId}
                   >
                     {activeRunId.replace("run_", "")}
@@ -209,7 +205,7 @@ export const AppShell: React.FC = () => {
               />
               {!collapsed && (
                 <span className="text-txt-muted text-[11px]">
-                  {backendOnline ? "Local Core (v2.0)" : "Connecting..."}
+                  {backendOnline ? "Local Core (v2.1)" : "Connecting..."}
                 </span>
               )}
             </div>
@@ -229,7 +225,33 @@ export const AppShell: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Active split hash / run status badge */}
+            {/* View Mode Toggle */}
+            <div className="hidden sm:flex rounded-lg border border-border bg-bg-card p-0.5 text-xs">
+              <button
+                onClick={() => setViewMode("basic")}
+                className={cn(
+                  "px-2.5 py-1 rounded text-xs transition-all",
+                  viewMode === "basic"
+                    ? "bg-accent-primary text-white font-bold shadow-sm"
+                    : "text-txt-muted hover:text-txt-primary"
+                )}
+              >
+                Basic
+              </button>
+              <button
+                onClick={() => setViewMode("advanced")}
+                className={cn(
+                  "px-2.5 py-1 rounded text-xs transition-all",
+                  viewMode === "advanced"
+                    ? "bg-accent-primary text-white font-bold shadow-sm"
+                    : "text-txt-muted hover:text-txt-primary"
+                )}
+              >
+                Advanced
+              </button>
+            </div>
+
+            {/* Split Hash Badge */}
             {latestRunResult && (
               <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-bg-elevated border border-border text-[11px] font-mono text-txt-muted">
                 <Hash className="h-3 w-3 text-accent-secondary" />
@@ -241,7 +263,7 @@ export const AppShell: React.FC = () => {
             )}
 
             {/* Scientific Auditor Notice */}
-            <div className="hidden md:flex items-center gap-2 rounded-full border border-accent-primary/25 bg-accent-primary/10 px-3 py-1 text-xs text-accent-secondary">
+            <div className="hidden lg:flex items-center gap-2 rounded-full border border-accent-primary/25 bg-accent-primary/10 px-3 py-1 text-xs text-accent-secondary">
               <Activity className="h-3.5 w-3.5 text-accent-secondary shrink-0" />
               <span className="font-medium">Scientific Auditor · NIDS Benchmark Trust</span>
             </div>
@@ -272,7 +294,7 @@ export const AppShell: React.FC = () => {
             </span>
           </div>
           <span className="hidden sm:inline font-mono text-[10px] text-txt-muted/70">
-            Local-First Execution · Cryptographic Audit Lineage · Zero Remote Telemetry
+            Local-First Execution · Cryptographic Lineage · Zero Remote Telemetry
           </span>
         </footer>
       </div>
@@ -281,41 +303,34 @@ export const AppShell: React.FC = () => {
       <Modal
         open={showHelpModal}
         onOpenChange={setShowHelpModal}
-        title="SmellScope 2.0 Scientific Auditor Guide"
+        title="SmellScope 2.1 Scientific Auditor Guide"
         description="Dataset trust intelligence, shortcut diagnostics, and remediation methodology."
         maxWidth="xl"
       >
         <div className="space-y-4 text-xs text-txt-secondary leading-relaxed">
           <div className="p-3.5 rounded-lg border border-border bg-bg-elevated/50 space-y-2">
-            <h4 className="font-bold text-txt-primary">Scientific Diagnostic Capabilities:</h4>
+            <h4 className="font-bold text-txt-primary">Five Scientific Dataset Smells:</h4>
             <ul className="list-disc pl-4 space-y-1.5 text-txt-muted">
               <li>
-                <strong className="text-txt-primary">UGT (Unassigned/Ghost Traffic):</strong> Detects
-                attacks exploiting port numbers unassigned by IANA or silent on the receiver.
+                <strong className="text-txt-primary">UGT (Unclear Ground Truth):</strong> Checks whether the dataset's attack labels and underlying evidence are sufficiently clear.
               </li>
               <li>
-                <strong className="text-txt-primary">WL (Window Length Anomaly):</strong> Measures
-                packet length periodicity and 4-gram repetition artifacts.
+                <strong className="text-txt-primary">WL (Wrong Labels / Repetition):</strong> Looks for suspicious, repetitive, or potentially incorrect packet length patterns.
               </li>
               <li>
-                <strong className="text-txt-primary">HDF (High Dimension Feature Dominance):</strong> Gini
-                concentration of single-feature classification importances.
+                <strong className="text-txt-primary">HDF (Highly Dependent Features):</strong> Checks whether features are strongly related in ways that make the model's task artificially easy.
               </li>
               <li>
-                <strong className="text-txt-primary">PDD (Partition Distance Disparity):</strong> Cluster
-                disparity between benign and attack classes in KMeans feature space.
+                <strong className="text-txt-primary">PDD (Poor Data Diversity):</strong> Looks for a lack of variation in network traffic characteristics.
               </li>
               <li>
-                <strong className="text-txt-primary">TC (Temporal Concentration):</strong> Quantifies
-                burst clustering within anomalous inter-arrival temporal windows.
+                <strong className="text-txt-primary">TC (Traffic Collapse):</strong> Checks for unrealistic burst patterns in traffic composition or collection timing.
               </li>
               <li>
-                <strong className="text-txt-primary">Null-Calibrated SFI:</strong> Shortcut Fragility
-                Index evaluated against a Monte Carlo null distribution to prevent false alarms.
+                <strong className="text-txt-primary">SFI (Shortcut Fragility Index):</strong> Measures how sensitive a model is to changes in selected features compared with a Monte Carlo null reference.
               </li>
               <li>
-                <strong className="text-txt-primary">GGI (Generalisation Gap Index):</strong> Measures
-                performance collapse across cross-subtype test splits.
+                <strong className="text-txt-primary">GGI (Generalisation Gap Index):</strong> Summarises performance drop between standard splits and held-out attack variations.
               </li>
             </ul>
           </div>
@@ -324,8 +339,7 @@ export const AppShell: React.FC = () => {
             <h4 className="font-bold text-txt-primary">Remediation Safety Monitor (RSM):</h4>
             <p className="text-txt-muted">
               Enforces non-negotiable safety guardrails (G1–G5) on all counterfactual training views.
-              Prevents class collapse, feature erasure, and test contamination. Every remediation is
-              cryptographically hashed and fully reversible.
+              Remediation is completely optional. All changes are verified on locked test sets and reversible.
             </p>
           </div>
 

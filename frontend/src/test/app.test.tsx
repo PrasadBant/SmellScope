@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { App } from "../App";
 import { formatPercent, formatNumber, formatDelta } from "../utils/cn";
 
-describe("SmellScope 2.0 Frontend Shell & Foundation", () => {
+describe("SmellScope 2.1 Simplified Frontend Shell & Foundation", () => {
   it("renders brand title, subtitle, and scientific disclaimer", () => {
     render(<App />);
     expect(screen.getByText("SMELLSCOPE")).toBeInTheDocument();
@@ -12,22 +12,22 @@ describe("SmellScope 2.0 Frontend Shell & Foundation", () => {
     expect(screen.getByText(/Scientific Auditor · NIDS Benchmark Trust/i)).toBeInTheDocument();
   });
 
-  it("renders 5-stage research workflow bar", () => {
+  it("renders 5-stage scientific workflow stepper", () => {
     render(<App />);
-    expect(screen.getByText("INGEST")).toBeInTheDocument();
-    expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
-    expect(screen.getByText("DIAGNOSE")).toBeInTheDocument();
-    expect(screen.getByText("REMEDIATE")).toBeInTheDocument();
-    expect(screen.getByText("VERIFY")).toBeInTheDocument();
+    expect(screen.getByText("DATASET")).toBeInTheDocument();
+    expect(screen.getByText("AUDIT")).toBeInTheDocument();
+    expect(screen.getByText("FINDINGS")).toBeInTheDocument();
+    expect(screen.getByText("REMEDIATION (OPT.)")).toBeInTheDocument();
+    expect(screen.getByText("VERIFY & REPORT")).toBeInTheDocument();
   });
 
-  it("renders workspace navigation links", () => {
+  it("renders primary 5-stage workflow navigation links", () => {
     render(<App />);
-    expect(screen.getByText("Dataset Ingestion")).toBeInTheDocument();
-    expect(screen.getByText("Smell Matrix")).toBeInTheDocument();
-    expect(screen.getByText("Shortcut Diagnostics")).toBeInTheDocument();
-    expect(screen.getByText("Remediation Lab")).toBeInTheDocument();
-    expect(screen.getByText("Verification & Reports")).toBeInTheDocument();
+    expect(screen.getByText("Home")).toBeInTheDocument();
+    expect(screen.getByText("New Audit")).toBeInTheDocument();
+    expect(screen.getByText("Findings")).toBeInTheDocument();
+    expect(screen.getByText("Remediation")).toBeInTheDocument();
+    expect(screen.getByText("Reports")).toBeInTheDocument();
   });
 
   it("formats scientific metrics accurately", () => {
