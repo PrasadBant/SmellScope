@@ -9,6 +9,9 @@ import { AuditScreen } from "@/features/audit/AuditScreen";
 import { FindingsScreen } from "@/features/findings/FindingsScreen";
 import { RemediationScreen } from "@/features/remediation/RemediationScreen";
 import { ReportsScreen } from "@/features/reports/ReportsScreen";
+import { ImprovementScreen } from "@/features/improvement/ImprovementScreen";
+import { ComparisonScreen } from "@/features/comparison/ComparisonScreen";
+import { HistoryScreen } from "@/features/history/HistoryScreen";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,10 +51,17 @@ export const App: React.FC = () => {
               {/* Stage 4: Remediation (Steps 9, 10, 11) */}
               <Route path="/remediation" element={<RemediationScreen />} />
 
+              {/* Improvement Centre (Dataset Repair) */}
+              <Route path="/improvement" element={<ImprovementScreen />} />
+              <Route path="/comparison" element={<ComparisonScreen />} />
+
               {/* Stage 5: Verify & Report (Steps 12, 13) */}
               <Route path="/reports" element={<ReportsScreen />} />
               <Route path="/export" element={<Navigate to="/reports" replace />} />
               <Route path="/audit-log" element={<Navigate to="/reports" replace />} />
+
+              {/* History */}
+              <Route path="/history" element={<HistoryScreen />} />
 
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />

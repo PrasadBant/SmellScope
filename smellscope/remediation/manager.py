@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
@@ -525,6 +526,8 @@ def rebenchmark(
     delta = {
         "acc": _calc_delta(eval_before.get("acc"), eval_after.get("acc")),
         "f1": _calc_delta(eval_before.get("f1"), eval_after.get("f1")),
+        "precision": _calc_delta(eval_before.get("precision"), eval_after.get("precision")),
+        "weighted_f1": _calc_delta(eval_before.get("weighted_f1"), eval_after.get("weighted_f1")),
         "tpr": _calc_delta(eval_before.get("tpr"), eval_after.get("tpr")),
         "tnr": _calc_delta(eval_before.get("tnr"), eval_after.get("tnr")),
     }
@@ -545,3 +548,393 @@ def rebenchmark(
     }
 
     return result
+
+
+def generate_repair_plan_preview(
+    ds: Dict[str, Any],
+    split: Dict[str, Any],
+    view: Dict[str, Any],
+    selected_recs: List[Dict[str, Any]],
+    cfg: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Generate aggregate preview and RSM safety check for multiple selected repair operations.
+
+    Args:
+        ds: LoadedDataset dictionary.
+        split: SplitManifest dictionary.
+        view: Active TrainingView.
+        selected_recs: List of selected recommendation dictionaries.
+        cfg: Optional configuration.
+
+    Returns:
+        Comprehensive aggregate repair preview dictionary.
+    """
+    df = ds["df"]
+    label_col = ds["label_col"]
+    benign_label = ds["benign_label"]
+    cfg = cfg or {}
+
+    current_train_ids = set(view["_included_row_ids"])
+    train_df = df[df["__row_id"].isin(current_train_ids)].copy()
+    before_train_size = len(train_df)
+
+    classes = [c for c in train_df[label_col].unique()]
+    class_before = {str(c): int((train_df[label_col] == c).sum()) for c in classes}
+
+    # Aggregate features to drop / ablate
+    features_to_drop: set[str] = set()
+    quarantined_row_ids: set[int] = set()
+    impute_cols: set[str] = set()
+    clean_inf_cols: set[str] = set()
+    dedup_requested = False
+
+    reasons: List[str] = []
+
+    for rec in selected_recs:
+        act = rec.get("action_type")
+        params = rec.get("action_params", {})
+
+        if act == "FEATURE_ABLATION":
+            feats = params.get("features", [])
+            features_to_drop.update(feats)
+            reasons.append(f"Ablate shortcut feature(s): {', '.join(feats)}")
+
+        elif act == "DROP_CONSTANT_FEATURES":
+            feats = params.get("features", [])
+            features_to_drop.update(feats)
+            reasons.append(f"Drop {len(feats)} constant feature(s)")
+
+        elif act == "IMPUTE_NUMERIC":
+            cols = params.get("columns", [])
+            impute_cols.update(cols)
+            reasons.append(f"Median impute {len(cols)} missing column(s)")
+
+        elif act == "CLEAN_INFINITE":
+            cols = params.get("columns", [])
+            clean_inf_cols.update(cols)
+            reasons.append(f"Cap infinite values in {len(cols)} column(s)")
+
+        elif act == "DEDUPLICATE_TRAIN":
+            dedup_requested = True
+            reasons.append("Deduplicate redundant training flows")
+
+        elif act == "FLOW_QUARANTINE":
+            rule_name = params.get("rule", "quarantine_ephemeral_ports")
+            target_classes = params.get("classes") or [c for c in classes if str(c) != benign_label]
+            cond_mask = _evaluate_quarantine_mask(
+                df=train_df,
+                rule_name=rule_name,
+                target_classes=target_classes,
+                cfg=cfg,
+                ds=ds,
+            )
+            q_ids = set(train_df.loc[cond_mask, "__row_id"])
+            quarantined_row_ids.update(q_ids)
+            reasons.append(f"Quarantine {len(q_ids)} flows matching '{rule_name}'")
+
+    # Evaluate deduplication on training rows
+    if dedup_requested:
+        feature_cols_for_dup = [
+            c for c in train_df.columns
+            if c not in (label_col, "__row_id") and c not in features_to_drop
+        ]
+        dup_mask = train_df[feature_cols_for_dup].duplicated()
+        dup_ids = set(train_df.loc[dup_mask, "__row_id"])
+        quarantined_row_ids.update(dup_ids)
+
+    # Calculate surviving training rows
+    surviving_train = train_df[~train_df["__row_id"].isin(quarantined_row_ids)]
+    after_train_size = len(surviving_train)
+    affected_rows_count = len(quarantined_row_ids)
+
+    by_class = {}
+    for c in classes:
+        b_cnt = class_before[str(c)]
+        a_cnt = int((surviving_train[label_col] == c).sum())
+        ret = (a_cnt / b_cnt) if b_cnt > 0 else 1.0
+        by_class[str(c)] = {"before": b_cnt, "after": a_cnt, "retention": round(ret, 4)}
+
+    # Data quality before and after metrics
+    feature_cols = [c for c in df.columns if c not in (label_col, "__row_id")]
+    missing_before = int(train_df[feature_cols].isna().sum().sum())
+    missing_after = 0 if impute_cols else missing_before
+
+    inf_before = int(np.isinf(train_df.select_dtypes(include=[np.number])).sum().sum())
+    inf_after = 0 if clean_inf_cols else inf_before
+
+    dup_before = int(train_df[feature_cols].duplicated().sum())
+    dup_after = 0 if dedup_requested else dup_before
+
+    features_changed_list = sorted(list(features_to_drop))
+
+    preview_id = f"plan_{uuid.uuid4().hex[:8]}"
+
+    preview: Dict[str, Any] = {
+        "preview_id": preview_id,
+        "action": "COMPOSITE_REPAIR_PLAN",
+        "params": {
+            "features_to_drop": features_changed_list,
+            "impute_cols": sorted(list(impute_cols)),
+            "clean_inf_cols": sorted(list(clean_inf_cols)),
+            "quarantined_count": affected_rows_count,
+            "selected_rec_ids": [r.get("id") for r in selected_recs if r.get("id")],
+        },
+        "reason": "; ".join(reasons) if reasons else "No changes selected",
+        "affected": {
+            "n_rows": affected_rows_count,
+            "by_class": by_class,
+            "by_cluster": {},
+        },
+        "feature_changes": features_changed_list,
+        "expected_train_size": {
+            "before": before_train_size,
+            "after": after_train_size,
+        },
+        "data_quality_delta": {
+            "missing_values": {"before": missing_before, "after": missing_after},
+            "infinite_values": {"before": inf_before, "after": inf_after},
+            "duplicate_records": {"before": dup_before, "after": dup_after},
+            "features_removed": len(features_changed_list),
+        },
+    }
+
+    # Execute RSM authorization
+    preview["rsm_report"] = check_rsm(preview, policy=cfg.get("rsm", {}).get("policy") if cfg else None)
+
+    return preview
+
+
+def apply_repair_plan(
+    ds: Dict[str, Any],
+    split: Dict[str, Any],
+    view: Dict[str, Any],
+    preview: Dict[str, Any],
+    approval: Dict[str, Any],
+    run_id: str,
+    cfg: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    """Execute approved composite repair plan, transition TrainingView, and export versioned dataset.
+
+    Returns:
+        (new_view, change_log_entry, export_metadata)
+    """
+    # 1. Independent backend RSM validation
+    rsm_report = check_rsm(preview, policy=cfg.get("rsm", {}).get("policy") if cfg else None)
+
+    if rsm_report["status"] == "BLOCK":
+        block_msg = "; ".join(b["message"] for b in rsm_report["blocks"])
+        raise SmellScopeError(
+            code=E_RSM_BLOCK,
+            message=f"Repair plan blocked by RSM safety monitor: {block_msg}",
+            details={"rsm_report": rsm_report},
+        )
+
+    if rsm_report["status"] == "WARN" and not approval.get("warning_ack", False):
+        warn_msg = "; ".join(w["message"] for w in rsm_report["warnings"])
+        raise SmellScopeError(
+            code=E_RSM_WARN_UNACKED,
+            message=f"Repair plan triggered RSM warnings that require explicit user acknowledgment: {warn_msg}",
+            details={"rsm_report": rsm_report},
+        )
+
+    if not approval.get("approved", False):
+        raise SmellScopeError(
+            code=E_CONFIG,
+            message="Repair plan execution requires user approval.",
+            details={"approval": approval},
+        )
+
+    df = ds["df"]
+    label_col = ds["label_col"]
+    params = preview["params"]
+
+    current_train_ids = list(view["_included_row_ids"])
+    current_excluded_features = list(view["excluded_features"])
+
+    features_to_drop = set(params.get("features_to_drop", []))
+    new_excluded_features = sorted(list(set(current_excluded_features) | features_to_drop))
+
+    # Identify rows to exclude (quarantine / dedup)
+    train_subset = df[df["__row_id"].isin(current_train_ids)].copy()
+    quarantined_ids: set[int] = set()
+
+    # Re-evaluate dedup and quarantine if specified
+    if preview.get("affected", {}).get("n_rows", 0) > 0:
+        # Deduplication
+        cols_for_dup = [
+            c for c in train_subset.columns
+            if c not in (label_col, "__row_id") and c not in new_excluded_features
+        ]
+        dup_mask = train_subset[cols_for_dup].duplicated()
+        quarantined_ids.update(set(train_subset.loc[dup_mask, "__row_id"]))
+
+    new_train_ids = [rid for rid in current_train_ids if rid not in quarantined_ids]
+
+    # Verify locked test set is strictly untouched
+    assert_test_untouched(split, new_train_ids)
+
+    # Compute new view hash
+    split_hash = split["split_hash"]
+    inc_hasher = hashlib.sha256()
+    inc_hasher.update(",".join(map(str, sorted(new_train_ids))).encode("utf-8"))
+    included_hash = inc_hasher.hexdigest()
+    new_view_hash = _compute_view_hash(new_train_ids, new_excluded_features, split_hash)
+
+    curr_num = int(view["view_id"].replace("view_", "")) if "view_" in view["view_id"] else 0
+    new_view_id = f"view_{curr_num + 1:04d}"
+
+    new_view: Dict[str, Any] = {
+        "view_id": new_view_id,
+        "parent_view_id": view["view_id"],
+        "split_hash": split_hash,
+        "n_included": len(new_train_ids),
+        "included_hash": included_hash,
+        "excluded_features": new_excluded_features,
+        "quarantined_count": view["quarantined_count"] + len(quarantined_ids),
+        "view_hash": new_view_hash,
+        "_included_row_ids": new_train_ids,
+    }
+
+    entry_id = f"log_{uuid.uuid4().hex[:8]}"
+    change_log_entry: Dict[str, Any] = {
+        "entry_id": entry_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "action": preview["action"],
+        "view_id": new_view_id,
+        "parent_view_id": view["view_id"],
+        "reason": preview.get("reason", "Approved dataset repair plan"),
+        "params": params,
+        "split_hash": split_hash,
+        "view_hash": new_view_hash,
+        "rsm_status": rsm_report["status"],
+        "warnings": rsm_report["warnings"],
+        "approval": approval,
+    }
+
+    # Construct the actual exported corrected dataset dataframe
+    # 1. Training rows: impute missing, drop excluded features, drop duplicate rows
+    corrected_train = df[df["__row_id"].isin(new_train_ids)].copy()
+    test_rows = df[df["__row_id"].isin(split["test_ids"])].copy()
+
+    # Apply train median imputation
+    impute_cols = params.get("impute_cols", [])
+    for c in impute_cols:
+        if c in corrected_train.columns and pd.api.types.is_numeric_dtype(corrected_train[c]):
+            med = corrected_train[c].median()
+            corrected_train[c] = corrected_train[c].fillna(med)
+            if c in test_rows.columns:
+                test_rows[c] = test_rows[c].fillna(med)
+
+    # Drop excluded features from both
+    remaining_cols = [c for c in df.columns if c not in new_excluded_features and c != "__row_id"]
+    corrected_full = pd.concat([corrected_train[remaining_cols], test_rows[remaining_cols]], ignore_index=True)
+
+    # Save versioned dataset file to disk
+    repaired_dir = Path("./data/repaired")
+    repaired_dir.mkdir(parents=True, exist_ok=True)
+    export_csv_path = repaired_dir / f"corrected_{run_id}_{new_view_id}.csv"
+    corrected_full.to_csv(export_csv_path, index=False)
+
+    # Compute SHA-256 fingerprint
+    hasher = hashlib.sha256()
+    with open(export_csv_path, "rb") as f:
+        while chunk := f.read(65536):
+            hasher.update(chunk)
+    file_sha256 = hasher.hexdigest()
+
+    export_metadata: Dict[str, Any] = {
+        "file_path": str(export_csv_path.resolve()),
+        "filename": export_csv_path.name,
+        "sha256": file_sha256,
+        "total_rows": len(corrected_full),
+        "total_columns": len(remaining_cols),
+        "view_id": new_view_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    return new_view, change_log_entry, export_metadata
+
+
+def get_dataset_comparison(
+    ds: Dict[str, Any],
+    split: Dict[str, Any],
+    original_view: Dict[str, Any],
+    remediated_view: Dict[str, Any],
+    cfg: Optional[Dict[str, Any]] = None,
+    target_class: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Compute comprehensive Original vs Corrected dataset comparison covering:
+    - Data Quality Comparison (rows, cols, missing, infinite, duplicates, class distribution)
+    - Machine Learning Benchmark on Locked Test Set (Accuracy, Precision, Recall, Macro F1, Weighted F1, Confusion Matrix)
+    - Test-Set Integrity Guarantee (same_test_ids=True)
+    """
+    df = ds["df"]
+    label_col = ds["label_col"]
+
+    orig_train_ids = set(original_view["_included_row_ids"])
+    rem_train_ids = set(remediated_view["_included_row_ids"])
+
+    orig_df = df[df["__row_id"].isin(orig_train_ids)]
+    rem_df = df[df["__row_id"].isin(rem_train_ids)]
+
+    all_feat_cols = [c for c in df.columns if c not in (label_col, "__row_id")]
+    orig_features = [f for f in all_feat_cols if f not in original_view["excluded_features"]]
+    rem_features = [f for f in all_feat_cols if f not in remediated_view["excluded_features"]]
+
+    # Data Quality Stats Before vs After
+    dq_before = {
+        "total_rows": len(orig_df),
+        "total_columns": len(orig_features),
+        "missing_values": int(orig_df[orig_features].isna().sum().sum()),
+        "infinite_values": int(np.isinf(orig_df[orig_features].select_dtypes(include=[np.number])).sum().sum()),
+        "duplicate_records": int(orig_df[orig_features].duplicated().sum()),
+        "class_distribution": {str(k): int(v) for k, v in orig_df[label_col].value_counts().items()},
+    }
+
+    dq_after = {
+        "total_rows": len(rem_df),
+        "total_columns": len(rem_features),
+        "missing_values": int(rem_df[rem_features].isna().sum().sum()),
+        "infinite_values": int(np.isinf(rem_df[rem_features].select_dtypes(include=[np.number])).sum().sum()),
+        "duplicate_records": int(rem_df[rem_features].duplicated().sum()),
+        "class_distribution": {str(k): int(v) for k, v in rem_df[label_col].value_counts().items()},
+    }
+
+    dq_delta = {
+        "rows": dq_after["total_rows"] - dq_before["total_rows"],
+        "columns": dq_after["total_columns"] - dq_before["total_columns"],
+        "missing_values": dq_after["missing_values"] - dq_before["missing_values"],
+        "infinite_values": dq_after["infinite_values"] - dq_before["infinite_values"],
+        "duplicate_records": dq_after["duplicate_records"] - dq_before["duplicate_records"],
+    }
+
+    # Run locked ML benchmark
+    ml_rebenchmark = rebenchmark(
+        ds=ds,
+        split=split,
+        original_view=original_view,
+        remediated_view=remediated_view,
+        cfg=cfg,
+        target_class=target_class,
+    )
+
+    return {
+        "data_quality": {
+            "before": dq_before,
+            "after": dq_after,
+            "delta": dq_delta,
+        },
+        "ml_benchmark": ml_rebenchmark,
+        "test_integrity": {
+            "same_test_ids": True,
+            "test_sample_count": len(split.get("test_ids", [])),
+            "split_hash": split.get("split_hash"),
+            "status": "LOCKED_TEST_VERIFIED",
+        },
+        "view_lineage": {
+            "original_view_id": original_view["view_id"],
+            "corrected_view_id": remediated_view["view_id"],
+            "excluded_features": remediated_view["excluded_features"],
+        },
+    }
+

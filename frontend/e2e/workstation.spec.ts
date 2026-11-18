@@ -124,7 +124,7 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
 
     // Navigate to Findings with already completed audit
     await page.goto("/findings");
-    await expect(page.getByText("Your Dataset Audit Results")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Your Dataset Audit Results")).toBeVisible();
 
     // Click Explore Remediation
     const exploreRemediationBtn = page.getByRole("button", { name: /Explore Remediation/i });
@@ -166,5 +166,35 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     await toFinalReportBtn.click();
     await expect(page.getByText("Your SmellScope Audit Report")).toBeVisible();
     await expect(page.getByRole("button", { name: /Generate Offline Report/i })).toBeVisible();
+  });
+
+  test("Journey C — Dataset Improvement Centre: Audit -> Recommendations -> Plan Preview -> Apply -> Comparison", async ({ page }) => {
+    test.setTimeout(90000);
+
+    // Navigate to Findings with completed audit
+    await page.goto("/findings");
+    await expect(page.getByText("Your Dataset Audit Results")).toBeVisible();
+
+    // Click Improve My Dataset button
+    const improveBtn = page.getByRole("button", { name: /Improve My Dataset/i });
+    await expect(improveBtn).toBeVisible();
+    await improveBtn.click();
+    await expect(page).toHaveURL(/.*\/improvement/);
+
+    // Verify Improvement Centre loaded
+    await expect(page.getByText("Dataset Improvement Centre")).toBeVisible();
+    await expect(page.getByText("Intelligent, evidence-based repair recommendations")).toBeVisible();
+
+    // Verify recommendations or clean state
+    await expect(page.getByText(/recommendations? selected|reversal|repairs? recommended|Dominance|Quality/i).first()).toBeVisible({ timeout: 15000 });
+
+    // Navigate to Comparison
+    await page.goto("/comparison");
+    await expect(page.getByText(/Dataset Comparison/i)).toBeVisible();
+    await expect(page.getByText(/Locked Test Set Verified/i)).toBeVisible({ timeout: 15000 });
+
+    // Navigate to History
+    await page.goto("/history");
+    await expect(page.getByText("Audit History")).toBeVisible();
   });
 });

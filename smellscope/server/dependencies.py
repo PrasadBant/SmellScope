@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, Tuple
 import uuid
 
 from smellscope.api import (
@@ -24,6 +24,12 @@ from smellscope.api import (
     rebenchmark,
     rollback,
     run_audit,
+)
+from smellscope.remediation.recommender import generate_repair_recommendations
+from smellscope.remediation.manager import (
+    generate_repair_plan_preview,
+    apply_repair_plan,
+    get_dataset_comparison,
 )
 from smellscope.core.errors import E_FILE, SmellScopeError
 
@@ -266,6 +272,7 @@ class RemediationSessionManager:
         self._changelogs: Dict[str, List[Dict[str, Any]]] = {}  # run_id -> list of logs
         self._previews: Dict[str, Dict[str, Any]] = {}  # preview_id -> preview
         self._rebenchmarks: Dict[str, Dict[str, Any]] = {}  # run_id -> last rebenchmark
+        self._exports: Dict[str, Dict[str, Any]] = {}  # run_id -> export metadata
 
     def _ensure_initialized(self, run_id: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
         job = self._job_manager.get_job(run_id)
@@ -389,6 +396,79 @@ class RemediationSessionManager:
     def get_last_rebenchmark(self, run_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
             return self._rebenchmarks.get(run_id)
+
+    def get_recommendations(self, run_id: str) -> List[Dict[str, Any]]:
+        with self._lock:
+            ds, split = self._ensure_initialized(run_id)
+            job = self._job_manager.get_job(run_id)
+            active_view = self._views[run_id][-1]
+            return generate_repair_recommendations(
+                ds=ds,
+                audit_result=job.result if job else None,
+                split=split,
+                view=active_view,
+            )
+
+    def create_repair_plan_preview(self, run_id: str, selected_recs: List[Dict[str, Any]]) -> Dict[str, Any]:
+        with self._lock:
+            ds, split = self._ensure_initialized(run_id)
+            active_view = self._views[run_id][-1]
+            preview = generate_repair_plan_preview(
+                ds=ds,
+                split=split,
+                view=active_view,
+                selected_recs=selected_recs,
+            )
+            self._previews[preview["preview_id"]] = {
+                "run_id": run_id,
+                "preview": preview,
+            }
+            return preview
+
+    def apply_repair_plan_action(self, preview_id: str, approval: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        with self._lock:
+            stored = self._previews.get(preview_id)
+            if not stored:
+                raise SmellScopeError(
+                    code=E_FILE,
+                    message=f"Preview '{preview_id}' not found.",
+                    details={"preview_id": preview_id},
+                )
+            run_id = stored["run_id"]
+            preview = stored["preview"]
+            ds, split = self._ensure_initialized(run_id)
+            active_view = self._views[run_id][-1]
+
+            new_view, log_entry, export_meta = apply_repair_plan(
+                ds=ds,
+                split=split,
+                view=active_view,
+                preview=preview,
+                approval=approval,
+                run_id=run_id,
+            )
+            self._views[run_id].append(new_view)
+            self._changelogs[run_id].append(log_entry)
+            self._exports[run_id] = export_meta
+            return new_view, log_entry, export_meta
+
+    def get_dataset_comparison(self, run_id: str, target_class: Optional[str] = None) -> Dict[str, Any]:
+        with self._lock:
+            ds, split = self._ensure_initialized(run_id)
+            views = self._views[run_id]
+            orig_view = views[0]
+            curr_view = views[-1]
+            return get_dataset_comparison(
+                ds=ds,
+                split=split,
+                original_view=orig_view,
+                remediated_view=curr_view,
+                target_class=target_class,
+            )
+
+    def get_export_metadata(self, run_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return self._exports.get(run_id)
 
 
 # Global singletons

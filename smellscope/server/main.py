@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from smellscope.core.errors import SmellScopeError
-from smellscope.server.routers import audits, benchmarks, datasets, health, remediation, reports
+from smellscope.server.routers import audits, benchmarks, datasets, health, improvement, remediation, reports
 
 app = FastAPI(
     title="SmellScope 2.0 API",
@@ -61,6 +61,7 @@ app.include_router(audits.router, prefix="/api/v1")
 app.include_router(remediation.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(benchmarks.router, prefix="/api/v1")
+app.include_router(improvement.router, prefix="/api/v1")
 
 # Mount static assets directory if available
 frontend_dist = Path("./frontend/dist")

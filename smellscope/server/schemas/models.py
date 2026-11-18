@@ -284,3 +284,65 @@ class ReportGenerateResponse(BaseModel):
     created_at: str
     download_url: str
     file_path: str
+
+
+# ─── Improvement Centre Schemas ──────────────────────────────────────────────
+
+class RepairRecommendationItem(BaseModel):
+    id: str
+    category: str  # DATA_QUALITY | DATASET_DESIGN | SHORTCUT_FRAGILITY
+    severity: str  # HIGH | MEDIUM | LOW
+    problem_name: str
+    detected: str
+    why_it_matters: str
+    affected_columns: List[str]
+    affected_records: int
+    evidence: Any  # str or Dict depending on recommendation type
+    suggested_correction: str
+    expected_benefit: str
+    potential_risk: str
+    is_reversible: bool
+    rsm_tier: str  # SAFE | WARN | REVIEW
+    action_type: str
+
+
+class RecommendationsResponse(BaseModel):
+    run_id: str
+    recommendations: List[RepairRecommendationItem]
+    generated_at: str
+
+
+class RepairPlanPreviewRequest(BaseModel):
+    selected_recs: List[Dict[str, Any]]
+
+
+class RepairPlanPreviewResponse(BaseModel):
+    preview_id: str
+    action: Optional[str] = "COMPOSITE_REPAIR_PLAN"
+    params: Optional[Dict[str, Any]] = None
+    reason: str
+    affected: Optional[Dict[str, Any]] = None
+    affected_row_ids: Optional[List[int]] = None
+    affected_rows_by_class: Optional[Dict[str, Any]] = None
+    feature_changes: Any = None
+    expected_train_size: Any = None
+    data_quality_delta: Optional[Dict[str, Any]] = None
+    rsm_report: Optional[Dict[str, Any]] = None
+
+
+class RepairPlanApplyRequest(BaseModel):
+    preview_id: str
+    approval: Dict[str, Any]
+
+
+class RepairPlanApplyResponse(BaseModel):
+    view: Dict[str, Any]
+    change_log_entry: Dict[str, Any]
+    export_metadata: Dict[str, Any]
+
+
+class DatasetComparisonResponse(BaseModel):
+    data_quality: Dict[str, Any]
+    ml_benchmark: Dict[str, Any]
+    test_integrity: Dict[str, Any]
+    view_lineage: Dict[str, Any]

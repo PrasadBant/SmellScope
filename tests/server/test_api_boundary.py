@@ -307,4 +307,70 @@ def test_security_path_traversal_prevention():
     assert dl_resp.status_code in (400, 404)
 
 
+def test_improvement_centre_workflow():
+    """Verify Improvement Centre recommendations, preview, apply, comparison, and export download."""
+    # 1. Start audit on sample dataset
+    start_resp = client.post("/api/v1/audits", json={"dataset_id": "cic2017_sample_planted"})
+    assert start_resp.status_code == 202
+    run_id = start_resp.json()["run_id"]
+
+    for _ in range(60):
+        status_resp = client.get(f"/api/v1/audits/{run_id}")
+        if status_resp.json()["status"] in ("COMPLETED", "FAILED"):
+            break
+        time.sleep(0.5)
+
+    assert status_resp.json()["status"] == "COMPLETED"
+
+    # 2. Get recommendations
+    recs_resp = client.get(f"/api/v1/audits/{run_id}/recommendations")
+    assert recs_resp.status_code == 200
+    recs_data = recs_resp.json()
+    assert recs_data["run_id"] == run_id
+    recs = recs_data["recommendations"]
+    assert isinstance(recs, list)
+    assert len(recs) > 0
+
+    # 3. Create repair plan preview
+    preview_resp = client.post(
+        f"/api/v1/audits/{run_id}/repair-plan/preview",
+        json={"selected_recs": [recs[0]]},
+    )
+    assert preview_resp.status_code == 200
+    prev_data = preview_resp.json()
+    preview_id = prev_data["preview_id"]
+    assert "rsm_report" in prev_data
+    assert "data_quality_delta" in prev_data
+
+    # 4. Apply repair plan
+    apply_resp = client.post(
+        f"/api/v1/audits/{run_id}/repair-plan/apply",
+        json={
+            "preview_id": preview_id,
+            "approval": {"approved": True, "warning_ack": True, "approved_at": "2026-11-19T00:00:00Z"},
+        },
+    )
+    assert apply_resp.status_code == 200
+    apply_data = apply_resp.json()
+    assert "export_metadata" in apply_data
+    export_meta = apply_data["export_metadata"]
+    assert "sha256" in export_meta
+    assert "filename" in export_meta
+
+    # 5. Get comparison
+    comp_resp = client.get(f"/api/v1/audits/{run_id}/comparison")
+    assert comp_resp.status_code == 200
+    comp_data = comp_resp.json()
+    assert comp_data["test_integrity"]["same_test_ids"] is True
+    assert "data_quality" in comp_data
+    assert "ml_benchmark" in comp_data
+
+    # 6. Download corrected dataset CSV
+    export_resp = client.get(f"/api/v1/audits/{run_id}/export/dataset")
+    assert export_resp.status_code == 200
+    assert "text/csv" in export_resp.headers["content-type"]
+    assert export_resp.headers["x-sha256"] == export_meta["sha256"]
+
+
+
 

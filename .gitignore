@@ -22,4 +22,5 @@ frontend/playwright-report/
 runs/
 reports/
 data/uploads/
+data/repaired/*.csv
 master_prompt.md

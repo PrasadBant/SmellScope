@@ -51,6 +51,15 @@ def list_sample_datasets() -> List[Dict[str, Any]]:
             "note": "Pre-configured 360-row benchmark with 95% planted port shortcut on PortScan.",
         },
         {
+            "id": "smellscope_nids_synthetic_test",
+            "name": "SmellScope NIDS Synthetic Test Benchmark (6k Rows, 5 Classes)",
+            "schema_id": "cic-ids-2017",
+            "label_col": "label",
+            "benign_label": "BENIGN",
+            "available": (sample_dir / "smellscope_nids_synthetic_test.csv").exists() or (sample_dir / "smellscope_nids_synthetic_test.parquet").exists(),
+            "note": "6,000-row 5-class synthetic benchmark with planted shortcut destination-port and data quality flaws.",
+        },
+        {
             "id": "unsw_nb15_sample",
             "name": "UNSW-NB15 Sample",
             "schema_id": "unsw-nb15",

@@ -13,6 +13,9 @@ import {
   HelpCircle,
   Hash,
   Sparkles,
+  Wrench,
+  BarChart2,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useAuditContext } from "@/stores/AuditContext";
@@ -32,8 +35,11 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { name: "Dataset", path: "/dataset", icon: <Database className="h-4 w-4" /> },
   { name: "Audit", path: "/audit", icon: <Activity className="h-4 w-4" /> },
   { name: "Findings", path: "/findings", icon: <Microscope className="h-4 w-4" /> },
+  { name: "Improvement", path: "/improvement", icon: <Wrench className="h-4 w-4" />, badge: "NEW" },
+  { name: "Comparison", path: "/comparison", icon: <BarChart2 className="h-4 w-4" /> },
   { name: "Remediation", path: "/remediation", icon: <Sliders className="h-4 w-4" />, badge: "OPTIONAL" },
   { name: "Verify & Report", path: "/reports", icon: <FileCheck className="h-4 w-4" /> },
+  { name: "History", path: "/history", icon: <Clock className="h-4 w-4" /> },
 ];
 
 export const AppShell: React.FC = () => {
@@ -80,6 +86,15 @@ export const AppShell: React.FC = () => {
     }
     if (itemPath === "/reports") {
       return p.startsWith("/reports") || p.startsWith("/export") || p.startsWith("/audit-log");
+    }
+    if (itemPath === "/improvement") {
+      return p.startsWith("/improvement");
+    }
+    if (itemPath === "/comparison") {
+      return p.startsWith("/comparison");
+    }
+    if (itemPath === "/history") {
+      return p.startsWith("/history");
     }
     return p.startsWith(itemPath);
   };

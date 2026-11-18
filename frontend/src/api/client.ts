@@ -120,4 +120,25 @@ export const api = {
 
   // Benchmarks Reference Values
   getPublishedValues: () => request<{ benchmarks: Record<string, any> }>("/benchmarks/published-values"),
+
+  // Improvement Centre
+  getRecommendations: (runId: string) =>
+    request<{ run_id: string; recommendations: any[]; generated_at: string }>(`/audits/${runId}/recommendations`),
+
+  createRepairPlanPreview: (runId: string, selectedRecs: any[]) =>
+    request<any>(`/audits/${runId}/repair-plan/preview`, {
+      method: "POST",
+      body: JSON.stringify({ selected_recs: selectedRecs }),
+    }),
+
+  applyRepairPlan: (runId: string, previewId: string, approval: any) =>
+    request<{ view: any; change_log_entry: any; export_metadata: any }>(`/audits/${runId}/repair-plan/apply`, {
+      method: "POST",
+      body: JSON.stringify({ preview_id: previewId, approval }),
+    }),
+
+  getDatasetComparison: (runId: string, targetClass?: string) =>
+    request<any>(`/audits/${runId}/comparison${targetClass ? `?target_class=${encodeURIComponent(targetClass)}` : ""}`),
+
+  getDownloadUrl: (runId: string) => `${BASE_URL}/audits/${runId}/export/dataset`,
 };

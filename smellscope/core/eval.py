@@ -83,16 +83,26 @@ def fit_and_evaluate(
         f1 = per_class.get(target_class, {}).get("f1", 0.0)
         tpr = per_class.get(target_class, {}).get("recall", 0.0)
         tnr = per_class.get(benign_label, {}).get("recall", 0.0)
+        prec = per_class.get(target_class, {}).get("precision", 0.0)
+        weighted_f1 = f1
     else:
         f1 = float(f1_score(y_test, preds, average="macro", zero_division=0))
         tpr = float(np.mean([m["recall"] for m in per_class.values()])) if per_class else 0.0
         tnr = float(per_class.get(benign_label, {}).get("recall", 0.0))
+        prec = float(np.mean([m["precision"] for m in per_class.values()])) if per_class else 0.0
+        weighted_f1 = float(f1_score(y_test, preds, average="weighted", zero_division=0))
+
+    cm = confusion_matrix(y_test, preds, labels=unique_labels).tolist()
 
     return {
         "acc": acc,
         "f1": f1,
+        "precision": prec,
+        "weighted_f1": weighted_f1,
         "tpr": tpr,
         "tnr": tnr,
+        "confusion_matrix": cm,
+        "labels": [str(l) for l in unique_labels],
         "per_class": per_class,
         "n_train": n_train,
         "n_test": n_test,

@@ -14,6 +14,7 @@ import {
   HelpCircle,
   BarChart3,
   Search,
+  Wrench,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -375,7 +376,31 @@ export const FindingsScreen: React.FC = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+          {/* Option 0: Improvement Centre (NEW) */}
+          <div className="p-4 rounded-xl border border-accent-primary/50 bg-accent-primary/5 flex flex-col justify-between space-y-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Wrench className="h-4 w-4 text-accent-primary" />
+                <h5 className="font-bold text-xs text-txt-primary">Improve My Dataset <span className="text-accent-secondary text-[9px] font-bold uppercase tracking-wider ml-1">NEW</span></h5>
+              </div>
+              <p className="text-[11px] text-txt-muted leading-relaxed">
+                Get intelligent, evidence-based repair recommendations. Select fixes, preview RSM safety assessment, and produce a corrected dataset with before/after comparison.
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="md"
+              className="gap-2 font-bold w-full"
+              onClick={() => {
+                navigate("/improvement");
+              }}
+            >
+              <Wrench className="h-3.5 w-3.5" />
+              Improve My Dataset <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+
           {/* Option A: Explore Remediation */}
           <div className="p-4 rounded-xl border border-border bg-bg-elevated/70 flex flex-col justify-between space-y-3">
             <div className="space-y-1">
