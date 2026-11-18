@@ -1,0 +1,42 @@
+# Published Reference Heuristic Values from Flood et al. EuroS&P 2024
+# Only verified published values are included. Each entry includes explicit source table/page.
+
+benchmarks:
+  cic_ids_2017:
+    dataset: "CIC-IDS-2017"
+    source: "Flood et al. EuroS&P 2024, Table 8 & Table 9"
+    classes:
+      DoS_Hulk:
+        label: "DoS Hulk"
+        PDD: 0.98
+        TC: 0.98
+        WL: 0.00
+        HDF: 1.00
+        UGT: 0.00
+        source: "Flood et al. Table 8"
+
+  unsw_nb15:
+    dataset: "UNSW-NB15"
+    source: "Flood et al. EuroS&P 2024, Table 8 & Table 9"
+    classes:
+      Generic:
+        label: "Generic"
+        PDD: 0.98
+        TC: 0.92
+        WL: null
+        HDF: 1.00
+        UGT: 0.98
+        source: "Flood et al. Table 8"
+
+  ctu_13:
+    dataset: "CTU-13"
+    source: "Flood et al. EuroS&P 2024, Table 8 & Table 9"
+    classes:
+      Rbot_2:
+        label: "Rbot 2"
+        PDD: null
+        TC: null
+        WL: null
+        HDF: 0.00
+        UGT: null
+        source: "Flood et al. Table 8"

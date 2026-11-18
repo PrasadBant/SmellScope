@@ -1,0 +1,94 @@
+# Feature Controllability Taxonomy for CIC-IDS-2017
+# Reference: Section 1.6 & Flood et al. / D'hooge et al.
+schema_id: "cic-ids-2017"
+taxonomy_version: "1.0"
+
+# Category A: Identifier / Network Metadata
+category_a:
+  regex:
+    - "(?i).*flow.*id.*"
+    - "(?i).*source.*ip.*"
+    - "(?i).*dest.*ip.*"
+    - "(?i).*timestamp.*"
+    - "(?i).*dest.*port.*"
+    - "(?i).*source.*port.*"
+  overrides:
+    - "Destination Port"
+    - "Source Port"
+    - "Flow ID"
+    - "Timestamp"
+
+# Category B: Environment / Host Fingerprint
+category_b:
+  regex:
+    - "(?i).*win.*byte.*"
+    - "(?i).*init.*win.*"
+    - "(?i).*mss.*"
+    - "(?i).*ttl.*"
+  overrides:
+    - "Init_Win_bytes_forward"
+    - "Init_Win_bytes_backward"
+    - "min_seg_size_forward"
+
+# Category C: Attacker-Controllable Packet Size & Timing Dynamics
+category_c:
+  regex:
+    - "(?i).*packet.*length.*"
+    - "(?i).*iat.*"
+    - "(?i).*duration.*"
+    - "(?i).*header.*length.*"
+    - "(?i).*segment.*size.*"
+    - "(?i).*bulk.*"
+  overrides:
+    - "Flow Duration"
+    - "Total Fwd Packets"
+    - "Total Backward Packets"
+    - "Total Length of Fwd Packets"
+    - "Total Length of Bwd Packets"
+    - "Fwd Packet Length Max"
+    - "Fwd Packet Length Min"
+    - "Fwd Packet Length Mean"
+    - "Fwd Packet Length Std"
+    - "Bwd Packet Length Max"
+    - "Bwd Packet Length Min"
+    - "Bwd Packet Length Mean"
+    - "Bwd Packet Length Std"
+    - "Flow IAT Mean"
+    - "Flow IAT Std"
+    - "Flow IAT Max"
+    - "Flow IAT Min"
+    - "Fwd IAT Total"
+    - "Fwd IAT Mean"
+    - "Fwd IAT Std"
+    - "Fwd IAT Max"
+    - "Fwd IAT Min"
+    - "Bwd IAT Total"
+    - "Bwd IAT Mean"
+    - "Bwd IAT Std"
+    - "Bwd IAT Max"
+    - "Bwd IAT Min"
+
+# Category D: Protocol Mechanism / Attack Mechanics
+category_d:
+  regex:
+    - "(?i).*flag.*count.*"
+    - "(?i).*syn.*"
+    - "(?i).*rst.*"
+    - "(?i).*fin.*"
+    - "(?i).*ack.*"
+    - "(?i).*urg.*"
+    - "(?i).*cwr.*"
+    - "(?i).*ece.*"
+  overrides:
+    - "Fwd PSH Flags"
+    - "Bwd PSH Flags"
+    - "Fwd URG Flags"
+    - "Bwd URG Flags"
+    - "FIN Flag Count"
+    - "SYN Flag Count"
+    - "RST Flag Count"
+    - "PSH Flag Count"
+    - "ACK Flag Count"
+    - "URG Flag Count"
+    - "CWE Flag Count"
+    - "ECE Flag Count"

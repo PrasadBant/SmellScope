@@ -1,6 +1,16 @@
 """Baseline model fitting and evaluation conforming to contract Section 2.7."""
 from typing import Any, Optional
+import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    precision_recall_fscore_support,
+    confusion_matrix,
+)
+
+from smellscope.core.preprocess import fit_preprocessor
 
 
 def fit_and_evaluate(
@@ -13,42 +23,79 @@ def fit_and_evaluate(
     seed: int = 42,
     target_class: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Train baseline RandomForest on train_df and evaluate on test_df.
+    """Train baseline RandomForest on train_df and evaluate on test_df."""
+    cfg = cfg or {}
+    baseline_cfg = cfg.get("baseline", {}).get("rf", {})
+    n_estimators = baseline_cfg.get("n_estimators", 100)
+    max_depth = baseline_cfg.get("max_depth", None)
 
-    Parameters
-    ----------
-    train_df : pd.DataFrame
-        Training data partition. Preprocessing fitted strictly on this partition.
-    test_df : pd.DataFrame
-        Locked test data partition.
-    label_col : str
-        Name of label column.
-    benign_label : str
-        Label indicating benign / background traffic.
-    feature_cols : list[str]
-        List of feature column names.
-    cfg : dict, optional
-        Configuration dictionary containing baseline RF settings.
-    seed : int
-        Random seed for reproducibility.
-    target_class : str, optional
-        If specified, performs binary classification (target_class vs benign_label).
-        If None, performs multiclass classification across all labels.
+    # Filter data if target_class is specified (binary: target vs benign)
+    if target_class is not None:
+        valid_classes = [target_class, benign_label]
+        tr = train_df[train_df[label_col].isin(valid_classes)].copy()
+        te = test_df[test_df[label_col].isin(valid_classes)].copy()
+    else:
+        tr = train_df.copy()
+        te = test_df.copy()
 
-    Returns
-    -------
-    dict[str, Any]
-        EvalResult dictionary conforming to contract Section 2.7:
-        {
-            "acc": float,
-            "f1": float,
-            "tpr": float,
-            "tnr": float,
-            "per_class": {cls: {"recall": float, "precision": float, "f1": float, "n": int}},
-            "n_train": int,
-            "n_test": int,
-            "seed": int,
-            "model": {"type": "RandomForest", "n_estimators": int}
+    clean_features = [c for c in feature_cols if not c.startswith("__") and c in tr.columns]
+
+    # Preprocessing fitted strictly on train_df
+    prep = fit_preprocessor(tr, feature_cols=clean_features, cfg=cfg)
+    X_train = prep.transform(tr)[clean_features].to_numpy(dtype=float)
+    X_test = prep.transform(te)[clean_features].to_numpy(dtype=float)
+
+    y_train = tr[label_col].to_numpy()
+    y_test = te[label_col].to_numpy()
+
+    n_train = len(X_train)
+    n_test = len(X_test)
+
+    # Train Random Forest
+    rf = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        random_state=seed,
+        n_jobs=-1,
+    )
+    rf.fit(X_train, y_train)
+    preds = rf.predict(X_test)
+
+    acc = float(accuracy_score(y_test, preds)) if n_test > 0 else 0.0
+
+    # Per-class metrics
+    unique_labels = sorted(list(set(np.concatenate([y_train, y_test]))))
+    p, r, f, s = precision_recall_fscore_support(
+        y_test, preds, labels=unique_labels, zero_division=0
+    )
+
+    per_class: dict[str, dict[str, Any]] = {}
+    for idx, lbl in enumerate(unique_labels):
+        per_class[str(lbl)] = {
+            "recall": float(r[idx]),
+            "precision": float(p[idx]),
+            "f1": float(f[idx]),
+            "n": int(s[idx]),
         }
-    """
-    raise NotImplementedError("Stub for Phase 2")
+
+    # Binary vs multiclass summary metrics
+    if target_class is not None:
+        f1 = per_class.get(target_class, {}).get("f1", 0.0)
+        tpr = per_class.get(target_class, {}).get("recall", 0.0)
+        tnr = per_class.get(benign_label, {}).get("recall", 0.0)
+    else:
+        f1 = float(f1_score(y_test, preds, average="macro", zero_division=0))
+        tpr = float(np.mean([m["recall"] for m in per_class.values()])) if per_class else 0.0
+        tnr = float(per_class.get(benign_label, {}).get("recall", 0.0))
+
+    return {
+        "acc": acc,
+        "f1": f1,
+        "tpr": tpr,
+        "tnr": tnr,
+        "per_class": per_class,
+        "n_train": n_train,
+        "n_test": n_test,
+        "seed": seed,
+        "model": {"type": "RandomForest", "n_estimators": n_estimators},
+    }

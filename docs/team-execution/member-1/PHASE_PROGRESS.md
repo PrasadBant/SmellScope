@@ -3,7 +3,7 @@
 **Member:** Member 1 (Research Core: heuristics, SFI, GGI, evaluation)  
 **Branch:** `feature/member-1-core-engine`  
 **Total Allocated Budget:** 6.5 person-hours  
-**Cumulative Hours Used:** 1.5 h  
+**Cumulative Hours Used:** 4.3 h  
 
 ---
 
@@ -14,37 +14,36 @@
 | **Phase 0** | Context & Repository Audit | 0.3 | 0.3 | **Completed** | Authorized by initial prompt |
 | **Phase 1** | Requirements & Specifications | 0.5 | 0.5 | **Completed** | Authorized by user ("next") |
 | **Phase 2** | Architecture & Contracts | 0.7 | 0.7 | **Completed** | Authorized by user ("next") |
-| **Phase 3** | Core Implementation (Freeze at end) | 2.8 | 0.0 | Pending | Awaiting user authorization |
-| **Phase 4** | Testing & Validation (E1, E2, E5) | 1.0 | 0.0 | Pending | Pending Phase 3 sign-off |
+| **Phase 3** | Core Implementation (Freeze at end) | 2.8 | 2.8 | **Completed** | Authorized by user ("next") |
+| **Phase 4** | Testing & Validation (E1, E2, E5) | 1.0 | 0.0 | Pending | Awaiting user authorization |
 | **Phase 5** | Integration Readiness | 0.7 | 0.0 | Pending | Pending Phase 4 sign-off |
 | **Phase 6** | Final Delivery & Handover | 0.5 | 0.0 | Pending | Pending Phase 5 sign-off |
 
 ---
 
-## Phase 2 Execution Record
+## Phase 3 Execution Record
 
-- **Status:** Completed
-- **Objectives:** Write frozen Shared Contract v1.0 verbatim, create contract-compliant function stubs and signatures for all `smellscope.core` public functions, implement standalone `split_stub.py`, construct contract-conformance test suite, and author technical design document.
+- **Status:** Completed (**FEATURE FREEZE ENACTED**)
+- **Objectives:** Implement all P0 and P1 core components, including preprocessing, 5 heuristics, baseline evaluation, feature taxonomy, null-calibrated SFI, fragility grid, GGI, cluster assignments, planted dataset generator, and published reference data.
 - **Deliverables Produced:**
-  - `docs/contracts/SHARED_CONTRACT_v1.0.md` (Verbatim frozen shared contract v1.0)
-  - `smellscope/__init__.py`, `smellscope/core/__init__.py`, `smellscope/core/errors.py`
-  - Function stubs with docstrings and contract signatures:
-    - `smellscope/core/preprocess.py`
-    - `smellscope/core/heuristics.py`
-    - `smellscope/core/eval.py`
-    - `smellscope/core/taxonomy.py`
-    - `smellscope/core/sfi.py`
-    - `smellscope/core/ggi.py`
-    - `smellscope/core/audit.py`
-    - `smellscope/core/planted.py`
-  - `tests/fixtures/core/split_stub.py` (Local contract-conforming locked split stub & synthetic fixture)
-  - `tests/core/test_contract.py` (Automated signature, error code, and split stub validation tests)
-  - `docs/research/TECHNICAL_DESIGN.md` (Architecture, data flow diagrams, algorithmic specifications, dependency matrix)
+  - `smellscope/core/preprocess.py`: Train-only fitting, imputation, encoding, min-max scaling, constant protection.
+  - `smellscope/core/heuristics.py`: Complete implementation of UGT, WL (ENN $k=4$ with tie bias), HDF (parallel single-feature RF), PDD and TC (KMeans elbow chord-distance + pairwise cosine).
+  - `smellscope/core/eval.py`: Baseline RandomForest (100 trees) evaluation for binary and multiclass.
+  - `smellscope/core/taxonomy.py`: Automated classification into Categories A, B, C, D, and UNMAPPED.
+  - `config/taxonomy_cic2017.yaml`, `config/taxonomy_unsw.yaml`: Schema mappings.
+  - `smellscope/core/sfi.py`: Full SFI algorithm: validation permutation ranking, bounded IQR noise, Monte Carlo null model ($N_{\text{null}}=50$), $z$-score, suspicion flag truth table, and `fragility_grid`.
+  - `smellscope/core/ggi.py`: Generalisation Gap Index comparing random vs group-held-out (provenance or cluster-proxy).
+  - `smellscope/core/audit.py`: `audit_class` wrapper with fault isolation, and `get_cluster_assignments`.
+  - `smellscope/core/planted.py`: Synthetic ground-truth planted shortcut dataset generator.
+  - `config/published_values.yaml`: Pre-registered literature benchmark values from Flood et al.
+  - `docs/research/CORE_IMPLEMENTATION.md`: Research lineage document cleanly delineating `[PAPER]` reimplementations from `[PROPOSED]` additions.
+  - Test suite (24 tests total): `test_preprocess.py`, `test_heuristics.py`, `test_eval.py`, `test_taxonomy.py`, `test_sfi.py`, `test_ggi.py`, `test_audit.py`, `test_reproducibility.py`.
 - **Verification Details:**
-  - Python import: `import smellscope.core` loads without error.
-  - Contract test suite: `pytest tests/core/test_contract.py -v` passes 3/3 tests (error codes, signatures, split stub).
-  - Parameter introspection confirms all 6 public core interfaces match contract parameter names and ordering exactly.
+  - Automated test execution: 24/24 tests passed in 16.50s.
+  - Contract conformance: `audit_class` verified against every field and type of Shared Contract v1.0 Section 2.6.
+  - Fault isolation: Injected failures (missing port column, broken feature) safely trapped into `na_reasons` without crashing audit.
+  - Reproducibility: Bit-identical results on repeated runs with seed 42.
 - **Key Decisions:**
-  - D-005: Built `split_stub.py` with strict SHA-256 manifest hashing and test-leak assertion (`assert_test_untouched`) to enable isolated unit testing in Phase 3 without external pipeline dependencies.
-  - D-006: Codified exact elbow selection via chord-distance method and IQR-scaled bounded perturbation in `TECHNICAL_DESIGN.md`.
-- **Blockers / Issues:** None. Ready for Phase 3.
+  - D-007: Implemented 2D vector cross-product directly without calling deprecated numpy 2.0 `np.cross(2d)` to prevent warning logs.
+  - D-008: Enacted **HARD FEATURE FREEZE** at cumulative hour 4.3. No new features will be introduced in Phases 4–6.
+- **Blockers / Issues:** None. Ready for Phase 4.

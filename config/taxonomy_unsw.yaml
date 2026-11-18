@@ -1,0 +1,73 @@
+# Feature Controllability Taxonomy for UNSW-NB15
+# Reference: Section 1.6 & Flood et al.
+schema_id: "unsw-nb15"
+taxonomy_version: "1.0"
+
+# Category A: Identifier / Network Metadata
+category_a:
+  regex:
+    - "(?i).*srcip.*"
+    - "(?i).*dstip.*"
+    - "(?i).*sport.*"
+    - "(?i).*dsport.*"
+    - "(?i).*stime.*"
+    - "(?i).*ltime.*"
+  overrides:
+    - "dsport"
+    - "sport"
+    - "srcip"
+    - "dstip"
+    - "stime"
+    - "ltime"
+
+# Category B: Environment / Host Fingerprint
+category_b:
+  regex:
+    - "(?i).*ttl.*"
+    - "(?i).*swin.*"
+    - "(?i).*dwin.*"
+    - "(?i).*proto.*"
+  overrides:
+    - "sttl"
+    - "dttl"
+    - "swin"
+    - "dwin"
+    - "proto"
+
+# Category C: Attacker-Controllable Packet Size & Timing Dynamics
+category_c:
+  regex:
+    - "(?i).*dur.*"
+    - "(?i).*sbytes.*"
+    - "(?i).*dbytes.*"
+    - "(?i).*sload.*"
+    - "(?i).*dload.*"
+    - "(?i).*spkts.*"
+    - "(?i).*dpkts.*"
+    - "(?i).*smeansz.*"
+    - "(?i).*dmeansz.*"
+    - "(?i).*jit.*"
+  overrides:
+    - "dur"
+    - "sbytes"
+    - "dbytes"
+    - "sload"
+    - "dload"
+    - "spkts"
+    - "dpkts"
+    - "smeansz"
+    - "dmeansz"
+    - "sjit"
+    - "djit"
+
+# Category D: Protocol Mechanism / Attack Mechanics
+category_d:
+  regex:
+    - "(?i).*state.*"
+    - "(?i).*service.*"
+    - "(?i).*trans.*"
+    - "(?i).*ct_.*"
+  overrides:
+    - "state"
+    - "trans_depth"
+    - "res_bdy_len"
