@@ -10,28 +10,41 @@ import {
   Lock,
   ArrowRight,
   Database,
+  Search,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { EvidenceBadge } from "@/components/ui/EvidenceBadge";
+import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { useAuditContext } from "@/stores/AuditContext";
 import { api } from "@/api/client";
 import { RemediationPreview, ViewsResponse, TrainingView, ChangeLogEntry } from "@/types/api";
 import { formatNumber, formatPercent } from "@/utils/cn";
 
 export const RemediationScreen: React.FC = () => {
-  const { activeDatasetId, activeRunId, latestRunResult, setLatestRunResult, setActiveStage } = useAuditContext();
+  const {
+    activeDatasetId,
+    activeRunId,
+    latestRunResult,
+    setLatestRunResult,
+    setActiveStage,
+  } = useAuditContext();
 
   const [viewsData, setViewsData] = useState<ViewsResponse | null>(null);
   const [selectedAction, setSelectedAction] = useState<"R1" | "R2">("R1");
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
   const [selectedRule, setSelectedRule] = useState<string>("quarantine_ephemeral_ports");
+  const [featureSearch, setFeatureSearch] = useState<string>("");
   const [datasetFeatures, setDatasetFeatures] = useState<string[]>([]);
   const [preview, setPreview] = useState<RemediationPreview | null>(null);
   const [warningAck, setWarningAck] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [applying, setApplying] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
+  const [rollbackTarget, setRollbackTarget] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
@@ -51,7 +64,6 @@ export const RemediationScreen: React.FC = () => {
     }
   }, [activeDatasetId, latestRunResult]);
 
-  // Set default features from candidate shortcuts
   useEffect(() => {
     if (latestRunResult && latestRunResult.classes.length > 0 && selectedFeatures.length === 0) {
       const shortcuts = latestRunResult.classes.flatMap((c) => c.sfi.top_features);
@@ -66,7 +78,7 @@ export const RemediationScreen: React.FC = () => {
       const res = await api.getRemediationViews(runId);
       setViewsData(res);
     } catch (err: any) {
-      console.error(err);
+      console.error("Failed to load views", err);
     }
   };
 
@@ -105,7 +117,7 @@ export const RemediationScreen: React.FC = () => {
 
       setMessage({
         type: "success",
-        text: `Remediation applied! Advanced to view ${res.view.view_id}.`,
+        text: `Remediation applied! Successfully advanced to training view ${res.view.view_id}.`,
       });
       setPreview(null);
       await loadViews(activeRunId);
@@ -116,32 +128,32 @@ export const RemediationScreen: React.FC = () => {
     }
   };
 
-  const handleRollback = async (entryId: string) => {
-    if (!activeRunId) return;
+  const executeRollback = async () => {
+    if (!activeRunId || !rollbackTarget) return;
     setRollingBack(true);
     setMessage(null);
 
     try {
-      const res = await api.rollback(activeRunId, entryId);
+      const res = await api.rollback(activeRunId, rollbackTarget);
       setMessage({
         type: "success",
-        text: `${res.message} (Restored ${res.restored_view.view_id})`,
+        text: `${res.message} (Restored to view ${res.restored_view.view_id})`,
       });
       await loadViews(activeRunId);
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "Rollback failed." });
+      setMessage({ type: "error", text: err.message || "Rollback operation failed." });
     } finally {
       setRollingBack(false);
+      setRollbackTarget(null);
     }
   };
 
   if (!activeRunId) {
     return (
-      <div className="max-w-7xl mx-auto py-16 text-center text-txt-muted space-y-3">
-        <Sliders className="h-10 w-10 mx-auto text-txt-muted/50" />
-        <h3 className="text-base font-bold text-txt-primary">No Active Audit Run</h3>
-        <p className="text-xs">Execute an audit first to enable remediation safeguards.</p>
-      </div>
+      <EmptyState
+        title="No Active Audit Run"
+        description="Execute an audit first to enable remediation safeguards and counterfactual training views."
+      />
     );
   }
 
@@ -152,6 +164,10 @@ export const RemediationScreen: React.FC = () => {
     new Set([...candidateShortcuts, ...datasetFeatures])
   );
 
+  const filteredCandidateFeatures = uniqueCandidateFeatures.filter((f) =>
+    f.toLowerCase().includes(featureSearch.toLowerCase())
+  );
+
   const activeView = viewsData?.active_view;
   const rsmReport = preview?.rsm_report;
   const isBlock = rsmReport?.status === "BLOCK";
@@ -159,55 +175,51 @@ export const RemediationScreen: React.FC = () => {
   const canApply = preview && !isBlock && (!isWarn || warningAck);
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-txt-primary flex items-center gap-2">
-            <Sliders className="h-6 w-6 text-accent-primary" />
-            Remediation Lab & Remediation Safety Monitor (RSM)
-          </h2>
-          <p className="text-sm text-txt-muted mt-1">
-            Experiment with reversible feature ablation (R1) and flow quarantine (R2) guarded by independent backend safety checks.
-          </p>
-        </div>
-
-        {activeView && (
-          <div className="flex items-center gap-2 text-xs font-mono bg-bg-elevated px-3 py-1.5 rounded-lg border border-border">
-            <span className="text-txt-muted">Active View:</span>
-            <strong className="text-accent-cyan">{activeView.view_id}</strong>
-            <span className="text-txt-muted">({formatNumber(activeView.n_included)} train rows)</span>
-          </div>
-        )}
-      </div>
+      <SectionHeader
+        icon={Sliders}
+        title="Remediation Lab & Remediation Safety Monitor (RSM)"
+        description="Simulate and execute reversible counterfactual remediations (feature ablation & traffic quarantine) guarded by independent backend safety checks."
+        badge={<EvidenceBadge type="target" />}
+        actions={
+          activeView && (
+            <div className="flex items-center gap-2 text-xs font-mono bg-bg-card px-3 py-1.5 rounded-lg border border-border">
+              <span className="text-txt-muted">Active View:</span>
+              <strong className="text-accent-secondary">{activeView.view_id}</strong>
+              <span className="text-txt-muted">({formatNumber(activeView.n_included)} train flows)</span>
+            </div>
+          )
+        }
+      />
 
       {message && (
         <div
-          className={`rounded-xl border p-4 text-xs flex items-center gap-3 ${
+          className={`rounded-xl border p-3.5 text-xs flex items-center gap-3 ${
             message.type === "success"
               ? "border-status-success/40 bg-status-success/10 text-emerald-300"
               : "border-status-block/40 bg-status-block/10 text-rose-300"
           }`}
         >
           {message.type === "success" ? (
-            <CheckCircle2 className="h-5 w-5 text-status-success shrink-0" />
+            <CheckCircle2 className="h-4 w-4 text-status-success shrink-0" />
           ) : (
-            <XCircle className="h-5 w-5 text-status-block shrink-0" />
+            <XCircle className="h-4 w-4 text-status-block shrink-0" />
           )}
           <span>{message.text}</span>
         </div>
       )}
 
-      {/* Main Grid: Action Config & What-If Preview */}
+      {/* 3-Column Remediation Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Configuration Controls */}
+        {/* Col 1: Action Configuration */}
         <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-sm">Remediation Action</CardTitle>
-            <CardDescription>Select counterfactual intervention</CardDescription>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm">1. Strategy Configuration</CardTitle>
+            <CardDescription>Select counterfactual intervention method</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Action Type Toggle */}
+          <CardContent className="p-4 space-y-4">
+            {/* Strategy Selector Toggle */}
             <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
               <button
                 onClick={() => {
@@ -216,7 +228,7 @@ export const RemediationScreen: React.FC = () => {
                 }}
                 className={`py-2 px-3 rounded-lg border text-center transition-all ${
                   selectedAction === "R1"
-                    ? "bg-accent-primary text-white border-accent-primary shadow"
+                    ? "bg-accent-primary text-white border-accent-primary shadow-sm font-bold"
                     : "bg-bg-elevated text-txt-secondary border-border hover:text-txt-primary"
                 }`}
               >
@@ -229,7 +241,7 @@ export const RemediationScreen: React.FC = () => {
                 }}
                 className={`py-2 px-3 rounded-lg border text-center transition-all ${
                   selectedAction === "R2"
-                    ? "bg-accent-primary text-white border-accent-primary shadow"
+                    ? "bg-accent-primary text-white border-accent-primary shadow-sm font-bold"
                     : "bg-bg-elevated text-txt-secondary border-border hover:text-txt-primary"
                 }`}
               >
@@ -240,17 +252,34 @@ export const RemediationScreen: React.FC = () => {
             {selectedAction === "R1" ? (
               /* R1 Feature Selection */
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-txt-muted block">
-                  Select Features to Ablate
-                </label>
-                <div className="max-h-48 overflow-y-auto space-y-1.5 rounded-lg border border-border bg-bg-main/50 p-2 text-xs">
-                  {uniqueCandidateFeatures.map((feat) => {
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-txt-muted block">
+                    Candidate Features
+                  </label>
+                  <span className="text-[10px] text-accent-secondary font-mono">
+                    {selectedFeatures.length} selected
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-bg-elevated text-xs">
+                  <Search className="h-3.5 w-3.5 text-txt-muted shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Search features..."
+                    value={featureSearch}
+                    onChange={(e) => setFeatureSearch(e.target.value)}
+                    className="w-full bg-transparent text-xs text-txt-primary focus:outline-none placeholder:text-txt-muted"
+                  />
+                </div>
+
+                <div className="max-h-52 overflow-y-auto space-y-1 rounded-lg border border-border bg-bg-main/50 p-2 text-xs scrollbar-thin">
+                  {filteredCandidateFeatures.map((feat) => {
                     const isChecked = selectedFeatures.includes(feat);
                     const isShortcut = candidateShortcuts.includes(feat);
                     return (
                       <label
                         key={feat}
-                        className="flex items-center justify-between p-1.5 rounded hover:bg-bg-elevated cursor-pointer select-none"
+                        className="flex items-center justify-between p-1.5 rounded hover:bg-bg-elevated/70 cursor-pointer select-none"
                       >
                         <div className="flex items-center gap-2 truncate">
                           <input
@@ -262,25 +291,25 @@ export const RemediationScreen: React.FC = () => {
                             }}
                             className="rounded border-border text-accent-primary focus:ring-accent-primary bg-bg-elevated"
                           />
-                          <span className="font-mono text-txt-primary truncate">{feat}</span>
+                          <span className="font-mono text-txt-primary truncate text-xs">{feat}</span>
                         </div>
                         {isShortcut && (
-                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-semibold shrink-0">
+                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-status-warning/15 text-status-warning border border-status-warning/30 font-semibold shrink-0">
                             Shortcut
                           </span>
                         )}
                       </label>
                     );
                   })}
-                  {uniqueCandidateFeatures.length === 0 && (
-                    <p className="text-txt-muted py-2 text-center">No candidate features found.</p>
+                  {filteredCandidateFeatures.length === 0 && (
+                    <p className="text-txt-muted py-3 text-center text-xs">No matching features found.</p>
                   )}
                 </div>
               </div>
             ) : (
               /* R2 Quarantine Rule Selection */
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-txt-muted block">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-txt-muted block">
                   Quarantine Heuristic Rule
                 </label>
                 <select
@@ -295,16 +324,16 @@ export const RemediationScreen: React.FC = () => {
                     Quarantine Zero TCP Window (Win = 0)
                   </option>
                 </select>
-                <p className="text-[11px] text-txt-muted">
-                  Quarantines candidate shortcut traffic exclusively within the training partition.
+                <p className="text-[11px] text-txt-muted leading-relaxed">
+                  Quarantines candidate shortcut traffic exclusively within the training partition; test partition remains locked.
                 </p>
               </div>
             )}
 
             <Button
-              variant="cyan"
+              variant="primary"
               size="md"
-              className="w-full gap-2"
+              className="w-full gap-2 text-xs font-bold"
               isLoading={loadingPreview}
               onClick={handleGeneratePreview}
             >
@@ -313,14 +342,12 @@ export const RemediationScreen: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Right: What-If Impact & Independent RSM Governance */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* Col 2 & 3: What-If Impact & RSM Governance */}
+        <div className="lg:col-span-2 space-y-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="py-3 px-4">
               <div className="flex items-center justify-between w-full">
-                <CardTitle className="text-sm">
-                  Remediation Safety Monitor (RSM) Authorization
-                </CardTitle>
+                <CardTitle className="text-sm">2. Remediation Safety Monitor (RSM) Authorization</CardTitle>
                 {rsmReport && (
                   <Badge
                     variant={
@@ -336,12 +363,12 @@ export const RemediationScreen: React.FC = () => {
                 )}
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4">
               {preview ? (
                 <div className="space-y-4">
                   {/* Status Banner */}
                   <div
-                    className={`rounded-xl border p-4 text-xs ${
+                    className={`rounded-xl border p-3.5 text-xs ${
                       isBlock
                         ? "border-status-block/60 bg-status-block/15 text-rose-300"
                         : isWarn
@@ -351,19 +378,19 @@ export const RemediationScreen: React.FC = () => {
                   >
                     <div className="flex items-start gap-3">
                       {isBlock ? (
-                        <XCircle className="h-5 w-5 text-status-block shrink-0" />
+                        <XCircle className="h-5 w-5 text-status-block shrink-0 mt-0.5" />
                       ) : isWarn ? (
-                        <AlertTriangle className="h-5 w-5 text-status-warning shrink-0" />
+                        <AlertTriangle className="h-5 w-5 text-status-warning shrink-0 mt-0.5" />
                       ) : (
-                        <CheckCircle2 className="h-5 w-5 text-status-success shrink-0" />
+                        <CheckCircle2 className="h-5 w-5 text-status-success shrink-0 mt-0.5" />
                       )}
                       <div className="space-y-1">
                         <strong className="block font-bold">
                           {isBlock
-                            ? "OPERATION BLOCKED: Violates Dataset Safety Floor"
+                            ? "OPERATION BLOCKED: Violates Non-Negotiable Safety Floor"
                             : isWarn
-                            ? "SAFETY WARNING: High Class Attrition / Excessive Ablation"
-                            : "OPERATION AUTHORIZED: Safety Checks Passed"}
+                            ? "SAFETY WARNING: High Class Attrition / Extensive Feature Ablation"
+                            : "OPERATION AUTHORIZED: All Safety Guardrails Passed"}
                         </strong>
                         <p className="text-[11px] opacity-90">{preview.reason}</p>
 
@@ -385,20 +412,20 @@ export const RemediationScreen: React.FC = () => {
                   {/* Impact Summary */}
                   <div className="grid grid-cols-3 gap-3 text-xs text-center font-mono">
                     <div className="p-3 rounded-lg bg-bg-elevated border border-border">
-                      <span className="text-[10px] text-txt-muted block uppercase">Affected Rows</span>
+                      <span className="text-[10px] text-txt-muted block uppercase font-semibold">Affected Rows</span>
                       <strong className="text-base text-txt-primary">
                         {formatNumber(preview.affected.n_rows)}
                       </strong>
                     </div>
                     <div className="p-3 rounded-lg bg-bg-elevated border border-border">
-                      <span className="text-[10px] text-txt-muted block uppercase">Train Size Before</span>
+                      <span className="text-[10px] text-txt-muted block uppercase font-semibold">Train Size Before</span>
                       <strong className="text-base text-txt-secondary">
                         {formatNumber(preview.expected_train_size.before)}
                       </strong>
                     </div>
                     <div className="p-3 rounded-lg bg-bg-elevated border border-border">
-                      <span className="text-[10px] text-txt-muted block uppercase">Train Size After</span>
-                      <strong className="text-base text-accent-cyan">
+                      <span className="text-[10px] text-txt-muted block uppercase font-semibold">Train Size After</span>
+                      <strong className="text-base text-accent-secondary">
                         {formatNumber(preview.expected_train_size.after)}
                       </strong>
                     </div>
@@ -423,7 +450,7 @@ export const RemediationScreen: React.FC = () => {
                   <Button
                     variant={isBlock ? "danger" : "primary"}
                     size="lg"
-                    className="w-full gap-2"
+                    className="w-full gap-2 text-xs font-bold"
                     disabled={!canApply || applying}
                     isLoading={applying}
                     onClick={handleApplyRemediation}
@@ -432,13 +459,14 @@ export const RemediationScreen: React.FC = () => {
                     {isBlock
                       ? "ACTION PROHIBITED BY RSM"
                       : isWarn && !warningAck
-                      ? "ACKNOWLEDGEMENT REQUIRED"
+                      ? "ACKNOWLEDGEMENT REQUIRED TO PROCEED"
                       : "APPLY REMEDIATION TO TRAINING VIEW"}
                   </Button>
                 </div>
               ) : (
-                <div className="py-10 text-center text-xs text-txt-muted">
-                  Configure an action on the left and click "Generate What-If Preview" to inspect safety checks.
+                <div className="py-10 text-center text-xs text-txt-muted space-y-1">
+                  <p className="font-medium text-txt-primary">No Simulation Preview Generated</p>
+                  <p className="text-[11px]">Configure an intervention on the left and click "Generate What-If Preview" to execute RSM checks.</p>
                 </div>
               )}
             </CardContent>
@@ -448,18 +476,18 @@ export const RemediationScreen: React.FC = () => {
 
       {/* Cryptographic Rollback & Lineage History */}
       <Card>
-        <CardHeader>
+        <CardHeader className="py-3 px-4">
           <CardTitle className="text-sm flex items-center gap-2">
-            <RotateCcw className="h-4 w-4 text-accent-cyan" />
+            <RotateCcw className="h-4 w-4 text-accent-secondary" />
             Cryptographic Training View Lineage & Rollback History
           </CardTitle>
           <CardDescription>
-            Every view is hashed deterministically. Rollback verifies identical parent view_hash.
+            Deterministic view hash lineage. Rollbacks are verified against parent view fingerprints.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 space-y-4">
           {viewsData && viewsData.views.length > 0 ? (
-            <div className="space-y-4">
+            <>
               {/* Visual Chain */}
               <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
                 {viewsData.views.map((v, i) => {
@@ -469,7 +497,7 @@ export const RemediationScreen: React.FC = () => {
                       <div
                         className={`rounded-lg border px-3 py-1.5 ${
                           isCurrent
-                            ? "border-accent-primary bg-accent-primary/20 text-white font-bold"
+                            ? "border-accent-primary bg-accent-primary/20 text-white font-bold shadow-sm"
                             : "border-border bg-bg-elevated text-txt-muted"
                         }`}
                       >
@@ -485,59 +513,79 @@ export const RemediationScreen: React.FC = () => {
 
               {/* Change Log Table */}
               {viewsData.change_log.length > 0 ? (
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-border bg-bg-elevated text-[11px] uppercase text-txt-muted">
-                      <th className="p-3">Log Entry</th>
-                      <th className="p-3">Action</th>
-                      <th className="p-3">Transition</th>
-                      <th className="p-3">RSM Status</th>
-                      <th className="p-3">Timestamp</th>
-                      <th className="p-3 text-right">Rollback</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60 font-mono">
-                    {viewsData.change_log.map((entry) => (
-                      <tr key={entry.entry_id} className="hover:bg-bg-elevated/40">
-                        <td className="p-3 text-txt-primary font-bold">{entry.entry_id}</td>
-                        <td className="p-3">
-                          <Badge variant="outline">{entry.action}: {entry.rule_name}</Badge>
-                        </td>
-                        <td className="p-3 text-txt-secondary">
-                          {entry.parent_view_id} &rarr; {entry.new_view_id}
-                        </td>
-                        <td className="p-3">
-                          <Badge variant={entry.rsm_status === "PASS" ? "success" : "warning"}>
-                            {entry.rsm_status}
-                          </Badge>
-                        </td>
-                        <td className="p-3 text-txt-muted">{entry.timestamp}</td>
-                        <td className="p-3 text-right">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="gap-1.5"
-                            isLoading={rollingBack}
-                            onClick={() => handleRollback(entry.entry_id)}
-                          >
-                            <RotateCcw className="h-3 w-3" /> Rollback
-                          </Button>
-                        </td>
+                <div className="overflow-x-auto scrollbar-thin">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-border bg-bg-elevated/70 text-[11px] uppercase text-txt-muted">
+                        <th className="p-2.5">Log Entry</th>
+                        <th className="p-2.5">Action</th>
+                        <th className="p-2.5">Transition</th>
+                        <th className="p-2.5">RSM Status</th>
+                        <th className="p-2.5">Timestamp</th>
+                        <th className="p-2.5 text-right">Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-border/40 font-mono text-xs">
+                      {viewsData.change_log.map((entry) => (
+                        <tr key={entry.entry_id} className="hover:bg-bg-elevated/40 transition-colors">
+                          <td className="p-2.5 text-txt-primary font-bold">{entry.entry_id}</td>
+                          <td className="p-2.5">
+                            <Badge variant="outline">{entry.action}: {entry.rule_name}</Badge>
+                          </td>
+                          <td className="p-2.5 text-txt-secondary">
+                            {entry.parent_view_id} &rarr; {entry.new_view_id}
+                          </td>
+                          <td className="p-2.5">
+                            <Badge variant={entry.rsm_status === "PASS" ? "success" : "warning"}>
+                              {entry.rsm_status}
+                            </Badge>
+                          </td>
+                          <td className="p-2.5 text-txt-muted">{entry.timestamp}</td>
+                          <td className="p-2.5 text-right">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="gap-1.5 text-xs py-1"
+                              isLoading={rollingBack && rollbackTarget === entry.entry_id}
+                              onClick={() => setRollbackTarget(entry.entry_id)}
+                            >
+                              <RotateCcw className="h-3 w-3" /> Rollback
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <p className="text-xs text-txt-muted text-center py-4">
-                  Root view active (view_0000). No remediations applied yet.
+                  Root baseline view active (view_0000). No historical interventions applied yet.
                 </p>
               )}
-            </div>
+            </>
           ) : (
             <p className="text-xs text-txt-muted text-center py-4">No view lineage recorded.</p>
           )}
         </CardContent>
       </Card>
+
+      {/* Rollback Confirmation Modal */}
+      <ConfirmationDialog
+        open={!!rollbackTarget}
+        onOpenChange={(open) => {
+          if (!open) setRollbackTarget(null);
+        }}
+        title="Confirm Remediation Rollback"
+        description="Are you sure you want to revert to the parent training view of this entry? All downstream modifications from this point will be reverted."
+        confirmLabel="Rollback View"
+        variant="warning"
+        isLoading={rollingBack}
+        onConfirm={executeRollback}
+      >
+        <div className="p-2.5 rounded bg-bg-elevated/60 border border-border font-mono text-xs text-txt-muted">
+          Target Log Entry: <strong className="text-txt-primary">{rollbackTarget}</strong>
+        </div>
+      </ConfirmationDialog>
     </div>
   );
 };

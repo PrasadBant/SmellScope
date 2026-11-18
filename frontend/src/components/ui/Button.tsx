@@ -10,27 +10,27 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "primary", size = "md", isLoading, children, disabled, ...props }, ref) => {
     const baseStyles =
-      "inline-flex items-center justify-center font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-bg-main disabled:opacity-50 disabled:cursor-not-allowed select-none";
+      "inline-flex items-center justify-center font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-accent-primary/50 focus:ring-offset-1 focus:ring-offset-bg-main disabled:opacity-50 disabled:cursor-not-allowed select-none active:scale-[0.99]";
 
     const variantStyles = {
       primary:
-        "bg-accent-primary hover:bg-accent-primary/90 text-white shadow-lg shadow-accent-primary/20 focus:ring-accent-primary border border-accent-primary/40",
+        "bg-accent-primary hover:bg-accent-primary/90 text-white shadow-md shadow-accent-primary/20 border border-accent-primary/40 font-semibold",
       secondary:
-        "bg-bg-elevated hover:bg-border/60 text-txt-primary border border-border focus:ring-border active:scale-[0.98]",
+        "bg-bg-elevated hover:bg-bg-hover text-txt-primary border border-border shadow-sm",
       outline:
-        "bg-transparent hover:bg-bg-elevated/50 text-txt-secondary hover:text-txt-primary border border-border focus:ring-accent-primary",
+        "bg-transparent hover:bg-bg-elevated/60 text-txt-secondary hover:text-txt-primary border border-border hover:border-border-active",
       ghost:
-        "bg-transparent hover:bg-bg-elevated/40 text-txt-secondary hover:text-txt-primary focus:ring-accent-primary",
+        "bg-transparent hover:bg-bg-elevated/60 text-txt-secondary hover:text-txt-primary",
       danger:
-        "bg-status-block hover:bg-status-block/90 text-white shadow-lg shadow-status-block/20 focus:ring-status-block border border-status-block/40",
+        "bg-status-block hover:bg-status-block/90 text-white shadow-md shadow-status-block/20 border border-status-block/40 font-semibold",
       cyan:
-        "bg-accent-cyan hover:bg-accent-cyan/90 text-bg-main font-semibold shadow-lg shadow-accent-cyan/20 focus:ring-accent-cyan",
+        "bg-accent-secondary hover:bg-accent-secondary/90 text-bg-main font-semibold shadow-md shadow-accent-secondary/20",
     };
 
     const sizeStyles = {
-      sm: "text-xs px-2.5 py-1.5 gap-1.5",
-      md: "text-sm px-4 py-2 gap-2",
-      lg: "text-base px-5 py-2.5 gap-2.5 font-semibold",
+      sm: "text-xs px-2.5 py-1.5 gap-1.5 rounded-md",
+      md: "text-xs px-3.5 py-2 gap-2 rounded-lg font-medium",
+      lg: "text-sm px-5 py-2.5 gap-2.5 rounded-lg font-semibold",
     };
 
     return (
@@ -41,7 +41,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {isLoading && (
-          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-current" fill="none" viewBox="0 0 24 24">
+          <svg className="animate-spin -ml-1 mr-2 h-3.5 w-3.5 text-current" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path
               className="opacity-75"

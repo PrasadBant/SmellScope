@@ -1,6 +1,7 @@
 import React from "react";
 import Plotly from "plotly.js-dist-min";
-import createPlotlyComponent from "react-plotly.js/factory";
+// @ts-ignore
+import createPlotlyComponent from "react-plotly.js/factory.js";
 
 const Plot = createPlotlyComponent(Plotly);
 
@@ -21,7 +22,7 @@ export const SfiDecayPlot: React.FC<SfiDecayPlotProps> = ({
   const cleanNull = recallNullMean.map((v) => (v !== null ? v : 0));
 
   return (
-    <div className="w-full h-72 rounded-xl overflow-hidden border border-border/80 bg-bg-elevated/40 p-2">
+    <div className="w-full h-80 rounded-xl overflow-hidden border border-border bg-bg-card p-3 shadow-inner">
       <Plot
         data={[
           {
@@ -29,7 +30,7 @@ export const SfiDecayPlot: React.FC<SfiDecayPlotProps> = ({
             y: cleanTop,
             type: "scatter",
             mode: "lines+markers",
-            name: `Top Feature (${topFeatureName})`,
+            name: `Candidate (${topFeatureName})`,
             line: { color: "#38BDF8", width: 2.5 },
             marker: { color: "#38BDF8", size: 6 },
           },
@@ -39,33 +40,35 @@ export const SfiDecayPlot: React.FC<SfiDecayPlotProps> = ({
             type: "scatter",
             mode: "lines",
             name: "Monte Carlo Null Mean",
-            line: { color: "#94A3B8", width: 2, dash: "dash" },
+            line: { color: "#FB923C", width: 2, dash: "dash" },
           },
         ]}
         layout={{
           autosize: true,
-          margin: { l: 45, r: 20, t: 30, b: 40 },
+          margin: { l: 45, r: 25, t: 30, b: 40 },
           paper_bgcolor: "transparent",
           plot_bgcolor: "transparent",
-          font: { color: "#94A3B8", size: 11 },
+          font: { color: "#8993A3", size: 11, family: "Inter, monospace" },
           xaxis: {
-            title: { text: "Perturbation Delta (δ)" },
-            gridcolor: "#1E293B",
-            zerolinecolor: "#334155",
+            title: { text: "Perturbation Delta (δ)", font: { color: "#C4CBD6", size: 11 } },
+            gridcolor: "#252C38",
+            zerolinecolor: "#252C38",
             tickvals: [0, 0.25, 0.5, 0.75, 1.0],
             ticktext: ["0.0 (Clean)", "0.25", "0.50", "0.75", "1.0 (Full)"],
+            tickfont: { color: "#8993A3" },
           },
           yaxis: {
-            title: { text: "Recall Response" },
+            title: { text: "Recall Response", font: { color: "#C4CBD6", size: 11 } },
             range: [-0.05, 1.05],
-            gridcolor: "#1E293B",
-            zerolinecolor: "#334155",
+            gridcolor: "#252C38",
+            zerolinecolor: "#252C38",
+            tickfont: { color: "#8993A3" },
           },
           legend: {
             orientation: "h",
             y: 1.15,
-            x: 0.1,
-            font: { color: "#CBD5E1", size: 11 },
+            x: 0.05,
+            font: { color: "#F5F7FA", size: 11 },
           },
           hovermode: "x unified",
         }}

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { DatasetItem, RunResult, AuditStatus } from "@/types/api";
 
-export type WorkflowStage = "INGEST" | "OVERVIEW" | "DIAGNOSE" | "REMEDIATE" | "VERIFY";
+export type WorkflowStage = "INGEST" | "OVERVIEW" | "MATRIX" | "DIAGNOSE" | "REMEDIATE" | "VERIFY";
 
 interface AuditContextType {
   activeDatasetId: string | null;
@@ -69,9 +69,9 @@ export const AuditProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 };
 
 export const useAuditContext = () => {
-  const ctx = useContext(AuditContext);
-  if (!ctx) {
+  const context = useContext(AuditContext);
+  if (!context) {
     throw new Error("useAuditContext must be used within an AuditProvider");
   }
-  return ctx;
+  return context;
 };

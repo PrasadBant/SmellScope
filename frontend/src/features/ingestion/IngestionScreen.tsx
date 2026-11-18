@@ -4,7 +4,7 @@ import {
   Upload,
   Database,
   FileSpreadsheet,
-  CheckCircle,
+  CheckCircle2,
   AlertCircle,
   Play,
   RefreshCw,
@@ -12,10 +12,17 @@ import {
   Hash,
   Layers,
   Lock,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { EvidenceBadge } from "@/components/ui/EvidenceBadge";
+import { FingerprintDisplay } from "@/components/ui/FingerprintDisplay";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { useAuditContext } from "@/stores/AuditContext";
 import { api } from "@/api/client";
 import { DatasetItem, DatasetMetadata, DatasetPreview, AuditStatus } from "@/types/api";
@@ -40,6 +47,7 @@ export const IngestionScreen: React.FC = () => {
   const [auditRunning, setAuditRunning] = useState(false);
   const [auditStatus, setAuditStatus] = useState<AuditStatus | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Form options
   const [labelCol, setLabelCol] = useState("Label");
@@ -61,7 +69,7 @@ export const IngestionScreen: React.FC = () => {
         setSelectedId(list[0].dataset_id);
       }
     } catch (err: any) {
-      console.error(err);
+      console.error("Failed to load dataset list", err);
     }
   };
 
@@ -130,7 +138,7 @@ export const IngestionScreen: React.FC = () => {
             setAuditRunning(false);
             const results = await api.getAuditResults(runId);
             setLatestRunResult(results);
-            setActiveStage("OVERVIEW");
+            setActiveStage("MATRIX");
             navigate("/heatmap");
           } else if (st.status === "FAILED") {
             clearInterval(pollInterval);
@@ -150,39 +158,34 @@ export const IngestionScreen: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-txt-primary flex items-center gap-2">
-            <Database className="h-6 w-6 text-accent-primary" />
-            Dataset Ingestion & Inspection
-          </h2>
-          <p className="text-sm text-txt-muted mt-1">
-            Upload local intrusion benchmark datasets or select pre-calibrated sample benchmarks.
-          </p>
-        </div>
-      </div>
+      <SectionHeader
+        icon={Database}
+        title="Dataset Ingestion & Inspection"
+        description="Select benchmark datasets, compute SHA-256 cryptographic hashes, and inspect locked partition distributions."
+        badge={<EvidenceBadge type="measured" />}
+      />
 
       {errorMsg && (
-        <div className="rounded-xl border border-status-block/40 bg-status-block/10 p-4 text-xs text-rose-300 flex items-center gap-3">
-          <AlertCircle className="h-5 w-5 text-status-block shrink-0" />
+        <div className="rounded-xl border border-status-block/40 bg-status-block/10 p-3.5 text-xs text-rose-300 flex items-center gap-3">
+          <AlertCircle className="h-4 w-4 text-status-block shrink-0" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {/* Upload & Selector Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Dataset Source Selection */}
+        {/* Dataset Source Selection & Audit Configuration */}
         <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-sm">Benchmark Selector</CardTitle>
-            <CardDescription>Select registered benchmark or upload a new file</CardDescription>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm">Benchmark Source</CardTitle>
+            <CardDescription>Select registered benchmark or upload a local file</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="p-4 space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-txt-secondary mb-1.5 uppercase tracking-wider">
-                Select Benchmark
+              <label className="block text-[11px] font-semibold text-txt-secondary mb-1 uppercase tracking-wider">
+                Pre-Calibrated Benchmark
               </label>
               <select
                 value={selectedId}
@@ -205,7 +208,7 @@ export const IngestionScreen: React.FC = () => {
                 if (e.dataTransfer.files?.[0]) handleFileUpload(e.dataTransfer.files[0]);
               }}
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-border hover:border-accent-primary/60 rounded-xl p-6 text-center cursor-pointer transition-colors bg-bg-main/40 group"
+              className="border border-dashed border-border hover:border-accent-primary/60 rounded-xl p-5 text-center cursor-pointer transition-colors bg-bg-main/50 group"
             >
               <input
                 ref={fileInputRef}
@@ -216,63 +219,75 @@ export const IngestionScreen: React.FC = () => {
                   if (e.target.files?.[0]) handleFileUpload(e.target.files[0]);
                 }}
               />
-              <Upload className="h-8 w-8 mx-auto text-txt-muted group-hover:text-accent-cyan transition-colors mb-2" />
+              <Upload className="h-7 w-7 mx-auto text-txt-muted group-hover:text-accent-secondary transition-colors mb-1.5" />
               <p className="text-xs font-semibold text-txt-primary">
-                {uploading ? "Uploading & computing SHA-256..." : "Click or drag benchmark file"}
+                {uploading ? "Computing SHA-256 & Registering..." : "Click or drag benchmark file"}
               </p>
-              <p className="text-[11px] text-txt-muted mt-1">Accepts .csv or .parquet (local only)</p>
+              <p className="text-[10px] text-txt-muted mt-0.5">Supports .csv or .parquet (strictly local)</p>
             </div>
 
-            {/* Audit Parameters */}
-            <div className="space-y-3 pt-2 border-t border-border/80">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-txt-muted">
-                Audit Configuration
-              </h4>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="text-txt-muted block mb-1">Label Column</label>
-                  <input
-                    type="text"
-                    value={labelCol}
-                    onChange={(e) => setLabelCol(e.target.value)}
-                    className="w-full rounded border border-border bg-bg-elevated px-2 py-1 font-mono text-xs text-txt-primary"
-                  />
+            {/* Collapsible Audit Parameters */}
+            <div className="pt-2 border-t border-border/80">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center justify-between w-full text-xs font-semibold text-txt-muted hover:text-txt-primary transition-colors py-1"
+              >
+                <span className="uppercase tracking-wider text-[10px]">
+                  Audit Configuration {showAdvanced ? "▲" : "▼"}
+                </span>
+                <span className="text-[11px] text-accent-secondary">
+                  {showAdvanced ? "Hide Options" : "Show Options"}
+                </span>
+              </button>
+
+              {showAdvanced && (
+                <div className="grid grid-cols-2 gap-2.5 text-xs pt-3 animate-in fade-in duration-200">
+                  <div>
+                    <label className="text-txt-muted block mb-1 text-[11px]">Label Column</label>
+                    <input
+                      type="text"
+                      value={labelCol}
+                      onChange={(e) => setLabelCol(e.target.value)}
+                      className="w-full rounded border border-border bg-bg-elevated px-2 py-1 font-mono text-xs text-txt-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-txt-muted block mb-1 text-[11px]">Benign Label</label>
+                    <input
+                      type="text"
+                      value={benignLabel}
+                      onChange={(e) => setBenignLabel(e.target.value)}
+                      className="w-full rounded border border-border bg-bg-elevated px-2 py-1 font-mono text-xs text-txt-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-txt-muted block mb-1 text-[11px]">Random Seed</label>
+                    <input
+                      type="number"
+                      value={seed}
+                      onChange={(e) => setSeed(Number(e.target.value))}
+                      className="w-full rounded border border-border bg-bg-elevated px-2 py-1 font-mono text-xs text-txt-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-txt-muted block mb-1 text-[11px]">Max Rows/Class</label>
+                    <input
+                      type="number"
+                      value={maxRows}
+                      onChange={(e) => setMaxRows(Number(e.target.value))}
+                      className="w-full rounded border border-border bg-bg-elevated px-2 py-1 font-mono text-xs text-txt-primary"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-txt-muted block mb-1">Benign Label</label>
-                  <input
-                    type="text"
-                    value={benignLabel}
-                    onChange={(e) => setBenignLabel(e.target.value)}
-                    className="w-full rounded border border-border bg-bg-elevated px-2 py-1 font-mono text-xs text-txt-primary"
-                  />
-                </div>
-                <div>
-                  <label className="text-txt-muted block mb-1">Random Seed</label>
-                  <input
-                    type="number"
-                    value={seed}
-                    onChange={(e) => setSeed(Number(e.target.value))}
-                    className="w-full rounded border border-border bg-bg-elevated px-2 py-1 font-mono text-xs text-txt-primary"
-                  />
-                </div>
-                <div>
-                  <label className="text-txt-muted block mb-1">Max Rows/Class</label>
-                  <input
-                    type="number"
-                    value={maxRows}
-                    onChange={(e) => setMaxRows(Number(e.target.value))}
-                    className="w-full rounded border border-border bg-bg-elevated px-2 py-1 font-mono text-xs text-txt-primary"
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Run Action */}
             <Button
               variant="primary"
               size="lg"
-              className="w-full gap-2 mt-4"
+              className="w-full gap-2 mt-2 font-bold"
               disabled={loading || auditRunning || !metadata}
               isLoading={auditRunning}
               onClick={handleRunAudit}
@@ -284,8 +299,10 @@ export const IngestionScreen: React.FC = () => {
             {auditRunning && auditStatus && (
               <div className="rounded-lg bg-bg-elevated p-3 border border-border space-y-2">
                 <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-accent-cyan font-bold">Class: {auditStatus.current_class || "Init"}</span>
-                  <span className="text-txt-muted">{auditStatus.progress_percent}%</span>
+                  <span className="text-accent-secondary font-bold">
+                    Class: {auditStatus.current_class || "Initializing"}
+                  </span>
+                  <span className="text-txt-primary font-bold">{auditStatus.progress_percent}%</span>
                 </div>
                 <div className="w-full bg-bg-main rounded-full h-1.5 overflow-hidden">
                   <div
@@ -303,57 +320,55 @@ export const IngestionScreen: React.FC = () => {
         </Card>
 
         {/* Dataset Metadata & Locked Split Overview */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm">Inspection & Cryptographic Fingerprint</CardTitle>
-              {metadata && (
-                <Badge variant="published">{metadata.schema_id}</Badge>
-              )}
+              {metadata && <Badge variant="published">{metadata.schema_id}</Badge>}
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4">
               {metadata ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                     <div className="p-3 rounded-lg bg-bg-elevated border border-border/80">
-                      <span className="text-txt-muted block text-[10px] uppercase">Loaded Flows</span>
+                      <span className="text-txt-muted block text-[10px] uppercase font-semibold">Loaded Flows</span>
                       <strong className="text-base font-mono text-txt-primary">{formatNumber(metadata.n_rows_loaded)}</strong>
                     </div>
                     <div className="p-3 rounded-lg bg-bg-elevated border border-border/80">
-                      <span className="text-txt-muted block text-[10px] uppercase">Total Features</span>
+                      <span className="text-txt-muted block text-[10px] uppercase font-semibold">Features</span>
                       <strong className="text-base font-mono text-txt-primary">{metadata.columns.length}</strong>
                     </div>
                     <div className="p-3 rounded-lg bg-bg-elevated border border-border/80">
-                      <span className="text-txt-muted block text-[10px] uppercase">Distinct Classes</span>
+                      <span className="text-txt-muted block text-[10px] uppercase font-semibold">Classes</span>
                       <strong className="text-base font-mono text-txt-primary">{Object.keys(metadata.class_counts).length}</strong>
                     </div>
                     <div className="p-3 rounded-lg bg-bg-elevated border border-border/80">
-                      <span className="text-txt-muted block text-[10px] uppercase">Dropped Inf/NaN</span>
+                      <span className="text-txt-muted block text-[10px] uppercase font-semibold">Dropped Inf/NaN</span>
                       <strong className="text-base font-mono text-txt-primary">{metadata.dropped_inf_nan}</strong>
                     </div>
                   </div>
 
-                  <div className="rounded-lg bg-bg-elevated/40 p-3 border border-border/60 text-xs font-mono space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-txt-muted">SHA-256 Fingerprint:</span>
-                      <span className="text-accent-cyan truncate max-w-[320px]">{metadata.sha256}</span>
+                  <div className="rounded-lg bg-bg-elevated/40 p-3 border border-border text-xs font-mono space-y-1.5">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-txt-muted">Dataset SHA-256:</span>
+                      <FingerprintDisplay hash={metadata.sha256} label="SHA-256" truncateLength={14} />
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between pt-1">
                       <span className="text-txt-muted">Target Port Column:</span>
-                      <span className="text-txt-primary">{metadata.column_roles.dst_port || "None detected"}</span>
+                      <span className="text-txt-primary font-semibold">{metadata.column_roles.dst_port || "None detected"}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-txt-muted">Timestamp Column:</span>
-                      <span className="text-txt-primary">{metadata.column_roles.timestamp || "None detected"}</span>
+                      <span className="text-txt-primary font-semibold">{metadata.column_roles.timestamp || "None detected"}</span>
                     </div>
                   </div>
 
                   {/* Class Distribution Bars */}
                   <div>
-                    <h5 className="text-xs font-semibold text-txt-muted uppercase tracking-wider mb-2">
-                      Class Distribution
+                    <h5 className="text-[11px] font-semibold text-txt-muted uppercase tracking-wider mb-2">
+                      Class Sample Distribution
                     </h5>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {Object.entries(metadata.class_counts).map(([cls, cnt]) => {
                         const pct = (cnt / metadata.n_rows_loaded) * 100;
                         const isBenign = cls === metadata.benign_label;
@@ -367,7 +382,7 @@ export const IngestionScreen: React.FC = () => {
                             </div>
                             <div className="h-1.5 w-full bg-bg-elevated rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full ${isBenign ? "bg-accent-cyan" : "bg-accent-primary"}`}
+                                className={`h-full rounded-full ${isBenign ? "bg-accent-secondary" : "bg-accent-primary"}`}
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
@@ -383,30 +398,30 @@ export const IngestionScreen: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Locked Split Specification */}
+          {/* Locked Split Protocol Card */}
           <Card>
-            <CardHeader>
+            <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Lock className="h-4 w-4 text-status-warning" />
                 Locked Split Protocol (Shared Contract v1.0 Section 2.5)
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4">
               <div className="grid grid-cols-3 gap-3 text-xs text-center">
                 <div className="p-3 rounded-lg bg-bg-elevated border border-border">
-                  <span className="text-txt-muted block uppercase text-[10px]">Training Split</span>
-                  <span className="text-lg font-mono font-bold text-accent-cyan">60.0%</span>
-                  <span className="text-[10px] text-txt-muted block">Fit-only boundary</span>
+                  <span className="text-txt-muted block uppercase text-[10px] font-bold">Training Split</span>
+                  <span className="text-lg font-mono font-bold text-accent-secondary">60.0%</span>
+                  <span className="text-[10px] text-txt-muted block mt-0.5">Fit-only boundary</span>
                 </div>
                 <div className="p-3 rounded-lg bg-bg-elevated border border-border">
-                  <span className="text-txt-muted block uppercase text-[10px]">Validation Split</span>
+                  <span className="text-txt-muted block uppercase text-[10px] font-bold">Validation Split</span>
                   <span className="text-lg font-mono font-bold text-txt-secondary">20.0%</span>
-                  <span className="text-[10px] text-txt-muted block">Calibration set</span>
+                  <span className="text-[10px] text-txt-muted block mt-0.5">Null calibration set</span>
                 </div>
                 <div className="p-3 rounded-lg bg-bg-elevated border border-border">
-                  <span className="text-txt-muted block uppercase text-[10px]">Locked Test Split</span>
+                  <span className="text-txt-muted block uppercase text-[10px] font-bold">Locked Test Split</span>
                   <span className="text-lg font-mono font-bold text-status-success">20.0%</span>
-                  <span className="text-[10px] text-txt-muted block">Guarded test integrity</span>
+                  <span className="text-[10px] text-txt-muted block mt-0.5">Permanently locked</span>
                 </div>
               </div>
             </CardContent>
@@ -417,33 +432,36 @@ export const IngestionScreen: React.FC = () => {
       {/* Bounded Preview Data Table */}
       {preview && preview.preview_rows.length > 0 && (
         <Card>
-          <CardHeader>
+          <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm">
               Bounded Data Preview ({preview.preview_rows.length} of {formatNumber(preview.total_rows)} rows)
             </CardTitle>
             <CardDescription>First rows after inf/nan sanitization</CardDescription>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent className="p-0 overflow-x-auto scrollbar-thin">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-border bg-bg-elevated">
+                <tr className="border-b border-border bg-bg-elevated/70">
                   {preview.columns.slice(0, 10).map((col) => (
-                    <th key={col} className="p-2.5 font-semibold text-txt-secondary uppercase tracking-wider text-[10px]">
+                    <th
+                      key={col}
+                      className="px-3 py-2.5 font-semibold text-txt-secondary uppercase tracking-wider text-[10px]"
+                    >
                       {col}
                     </th>
                   ))}
-                  {preview.columns.length > 10 && <th className="p-2.5 text-txt-muted">...</th>}
+                  {preview.columns.length > 10 && <th className="px-3 py-2.5 text-txt-muted">...</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60 font-mono">
+              <tbody className="divide-y divide-border/40 font-mono text-[11px]">
                 {preview.preview_rows.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-bg-elevated/40">
+                  <tr key={idx} className="hover:bg-bg-elevated/50 transition-colors">
                     {preview.columns.slice(0, 10).map((col) => (
-                      <td key={col} className="p-2.5 text-txt-secondary">
+                      <td key={col} className="px-3 py-2 text-txt-secondary whitespace-nowrap">
                         {row[col] !== null ? String(row[col]) : <span className="text-txt-muted">null</span>}
                       </td>
                     ))}
-                    {preview.columns.length > 10 && <td className="p-2.5 text-txt-muted">...</td>}
+                    {preview.columns.length > 10 && <td className="px-3 py-2 text-txt-muted">...</td>}
                   </tr>
                 ))}
               </tbody>

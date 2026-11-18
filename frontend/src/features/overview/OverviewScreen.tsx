@@ -7,19 +7,26 @@ import {
   AlertTriangle,
   Microscope,
   Database,
-  ArrowUpRight,
-  TrendingUp,
+  ArrowRight,
+  TrendingDown,
   FileText,
   Clock,
   Layers,
+  Activity,
+  CheckCircle2,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { StatCard } from "@/components/ui/StatCard";
+import { MetricCard } from "@/components/ui/MetricCard";
+import { EvidenceBadge } from "@/components/ui/EvidenceBadge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { useAuditContext } from "@/stores/AuditContext";
 import { api } from "@/api/client";
-import { AuditStatus, RunResult } from "@/types/api";
+import { AuditStatus } from "@/types/api";
 import { formatNumber, formatPercent } from "@/utils/cn";
 
 export const OverviewScreen: React.FC = () => {
@@ -44,14 +51,12 @@ export const OverviewScreen: React.FC = () => {
         const auditList = await api.listAudits();
         if (mounted) {
           setAudits(auditList);
-          // If no activeRunId but audits exist, select latest
           if (!activeRunId && auditList.length > 0) {
             const completed = auditList.find((a) => a.status === "COMPLETED") || auditList[0];
             setActiveRunId(completed.run_id);
           }
         }
 
-        // Fetch latest run results if we have an active run
         const targetRun = activeRunId || (auditList.length > 0 ? auditList[0].run_id : null);
         if (targetRun) {
           try {
@@ -75,100 +80,141 @@ export const OverviewScreen: React.FC = () => {
     ? latestRunResult.classes.filter((c) => c.sfi.flag)
     : [];
 
-  return (
-    <div className="space-y-8 max-w-7xl mx-auto">
-      {/* Hero Command Center Header */}
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-r from-bg-card via-bg-elevated/70 to-bg-card p-8 shadow-2xl">
-        <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 rounded-full border border-accent-cyan/30 bg-accent-cyan/10 px-3 py-1 text-xs font-semibold text-accent-cyan">
-            <span>SMELLSCOPE 2.0 WORKSTATION</span>
-          </div>
-          <h1 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-txt-primary">
-            Understand what your NIDS benchmark is really learning.
-          </h1>
-          <p className="text-sm lg:text-base text-txt-secondary leading-relaxed">
-            Investigate benchmark dataset design flaws, statistical artifacts, shortcut dependencies,
-            and the reliability of machine-learning evaluation with null-calibrated diagnostics.
-          </p>
+  const meanSfi =
+    latestRunResult && latestRunResult.classes.length > 0
+      ? (
+          latestRunResult.classes.reduce(
+            (acc, c) => acc + (c.sfi.sfi_top !== null ? c.sfi.sfi_top : 0),
+            0
+          ) / latestRunResult.classes.length
+        ).toFixed(3)
+      : "N/A";
 
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+  const maxGgi =
+    latestRunResult && latestRunResult.classes.length > 0
+      ? Math.max(
+          ...latestRunResult.classes.map((c) => (c.ggi.gap !== null ? c.ggi.gap : 0))
+        ).toFixed(3)
+      : "N/A";
+
+  if (loading && !latestRunResult) {
+    return <LoadingState title="Loading Workstation Intelligence..." description="Retrieving local audit records and benchmark metrics" />;
+  }
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Executive Command Header */}
+      <div className="rounded-xl border border-border bg-gradient-to-r from-bg-card via-bg-elevated to-bg-card p-5 shadow-lg relative overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent-primary/15 text-accent-secondary border border-accent-primary/30">
+                <Activity className="h-3 w-3 text-accent-secondary" />
+                SMELLSCOPE 2.0 WORKSTATION
+              </span>
+              <EvidenceBadge type="measured" />
+            </div>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-txt-primary">
+              Scientific Dataset Trust Overview
+            </h1>
+            <p className="text-xs text-txt-secondary max-w-2xl leading-relaxed">
+              Auditing benchmark dataset design flaws, statistical artifacts, and shortcut dependencies
+              with null-calibrated diagnostics on stratified, locked evaluation splits.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0">
             <Button
               variant="primary"
-              size="lg"
+              size="sm"
               onClick={() => {
                 setActiveStage("INGEST");
                 navigate("/ingestion");
               }}
               className="gap-2"
             >
-              <Play className="h-4 w-4 fill-current" />
-              START NEW AUDIT
+              <Play className="h-3.5 w-3.5 fill-current" />
+              Start New Audit
             </Button>
             <Button
               variant="secondary"
-              size="lg"
+              size="sm"
               onClick={() => {
-                const historyEl = document.getElementById("audit-history-section");
-                historyEl?.scrollIntoView({ behavior: "smooth" });
+                const el = document.getElementById("audit-history-panel");
+                el?.scrollIntoView({ behavior: "smooth" });
               }}
               className="gap-2"
             >
-              <History className="h-4 w-4" />
-              VIEW AUDIT HISTORY
+              <History className="h-3.5 w-3.5" />
+              Audit Runs ({audits.length})
             </Button>
           </div>
         </div>
-
-        {/* Ambient background decoration */}
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-72 w-72 rounded-full bg-accent-primary/10 blur-3xl pointer-events-none" />
-        <div className="absolute right-48 bottom-0 h-48 w-48 rounded-full bg-accent-cyan/10 blur-2xl pointer-events-none" />
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Active Benchmark Dataset"
+      {/* 6 Compact KPI Panels */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <MetricCard
+          title="Active Benchmark"
           value={latestRunResult?.dataset.schema_id || activeDatasetId || "None"}
-          subtitle={latestRunResult ? `${formatNumber(latestRunResult.dataset.n_rows_loaded)} flows evaluated` : "No dataset active"}
-          icon={<Database className="h-5 w-5" />}
+          subtitle={latestRunResult ? `${formatNumber(latestRunResult.dataset.n_rows_loaded)} flows` : "No dataset active"}
+          evidenceType="measured"
+          icon={<Database className="h-4 w-4" />}
         />
-        <StatCard
-          title="Audited Attack Classes"
+        <MetricCard
+          title="Audited Classes"
           value={latestRunResult ? latestRunResult.classes.length : 0}
-          subtitle={latestRunResult ? `Split hash: ${latestRunResult.split.split_hash.slice(0, 8)}...` : "Pending audit execution"}
-          icon={<Layers className="h-5 w-5" />}
+          subtitle={latestRunResult ? `Split: ${latestRunResult.split.split_hash.slice(0, 8)}...` : "Pending run"}
+          evidenceType="measured"
+          icon={<Layers className="h-4 w-4" />}
         />
-        <StatCard
-          title="Shortcut Candidates"
+        <MetricCard
+          title="Shortcut Suspects"
           value={flaggedClasses.length}
           subtitle={
             flaggedClasses.length > 0
-              ? `${flaggedClasses.map((c) => c.class).join(", ")} flagged`
-              : "0 shortcut flags triggered"
+              ? `${flaggedClasses.map((c) => c.class).join(", ")}`
+              : "0 shortcut flags"
           }
-          icon={<AlertTriangle className="h-5 w-5 text-status-warning" />}
+          evidenceType="synthetic"
+          icon={<AlertTriangle className="h-4 w-4 text-status-warning" />}
         />
-        <StatCard
+        <MetricCard
+          title="Mean SFI Index"
+          value={meanSfi}
+          subtitle="Monte Carlo calibrated"
+          evidenceType="synthetic"
+          icon={<TrendingDown className="h-4 w-4 text-accent-secondary" />}
+        />
+        <MetricCard
+          title="Max Generalisation Gap"
+          value={maxGgi}
+          subtitle="Cross-subtype collapse"
+          evidenceType="measured"
+          icon={<Activity className="h-4 w-4" />}
+        />
+        <MetricCard
           title="Audit Runtime"
           value={latestRunResult ? `${latestRunResult.runtime.total_seconds}s` : "0.0s"}
-          subtitle="Stratified locked test evaluation"
-          icon={<Clock className="h-5 w-5" />}
+          subtitle="Locked test split"
+          evidenceType="measured"
+          icon={<Clock className="h-4 w-4" />}
         />
       </div>
 
-      {/* Main Overview Grid */}
+      {/* Two-Column Research Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Key Findings & Diagnostic Quick Jump */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* Left Column (2/3 width): Key Vulnerability Findings */}
+        <div className="lg:col-span-2 space-y-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="py-3 px-4">
               <div>
-                <CardTitle>
-                  <Microscope className="h-4 w-4 text-accent-cyan" />
-                  Key Research Findings & Shortcut Suspicions
+                <CardTitle className="text-sm">
+                  <Microscope className="h-4 w-4 text-accent-secondary" />
+                  Key Research Vulnerability Findings
                 </CardTitle>
                 <CardDescription>
-                  Evaluated via null-calibrated SFI, 4-gram repetition, and feature controllability taxonomy.
+                  Synthesized across null-calibrated SFI, 4-gram repetitions, and feature controllability taxonomy.
                 </CardDescription>
               </div>
               {latestRunResult && (
@@ -176,219 +222,236 @@ export const OverviewScreen: React.FC = () => {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    setActiveStage("DIAGNOSE");
-                    navigate("/diagnostics");
+                    setActiveStage("MATRIX");
+                    navigate("/heatmap");
                   }}
-                  className="gap-1.5"
+                  className="gap-1.5 text-xs py-1"
                 >
-                  Diagnostics Lab <ArrowUpRight className="h-3.5 w-3.5" />
+                  Smell Matrix <ArrowRight className="h-3 w-3" />
                 </Button>
               )}
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 space-y-3">
               {latestRunResult ? (
-                <div className="space-y-4">
-                  {latestRunResult.classes.map((cls) => {
-                    const isFlagged = cls.sfi.flag;
-                    const topFeature = cls.sfi.top_features[0] || "None";
-                    const topCategory = cls.sfi.categories[0] || "UNMAPPED";
+                latestRunResult.classes.map((cls) => {
+                  const isFlagged = cls.sfi.flag;
+                  const topFeature = cls.sfi.top_features[0] || "None";
+                  const topCategory = cls.sfi.categories[0] || "UNMAPPED";
 
-                    return (
-                      <div
-                        key={cls.class}
-                        className="rounded-xl border border-border bg-bg-elevated/40 p-4 transition-all hover:border-border-active/60"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <h4 className="font-bold text-sm text-txt-primary">{cls.class}</h4>
-                            <Badge variant={isFlagged ? "danger" : "success"}>
-                              {isFlagged ? "SHORTCUT SUSPECT" : "CLEAN BASELINE"}
-                            </Badge>
-                            <Badge variant={`category${topCategory}` as any}>
-                              CAT {topCategory}: {topFeature}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center gap-4 text-xs font-mono">
-                            <span className="text-txt-muted">
-                              SFI: <strong className="text-txt-primary">{cls.sfi.sfi_top !== null ? cls.sfi.sfi_top.toFixed(3) : "N/A"}</strong>
-                            </span>
-                            <span className="text-txt-muted">
-                              Base F1: <strong className="text-txt-primary">{cls.baseline.f1 !== null ? formatPercent(cls.baseline.f1) : "N/A"}</strong>
-                            </span>
-                          </div>
+                  return (
+                    <div
+                      key={cls.class}
+                      className="rounded-lg border border-border bg-bg-elevated/40 p-3.5 transition-all hover:border-border-active/60 space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <h4 className="font-bold text-sm text-txt-primary">{cls.class}</h4>
+                          <Badge variant={isFlagged ? "danger" : "success"}>
+                            {isFlagged ? "SHORTCUT SUSPECT" : "CLEAN BASELINE"}
+                          </Badge>
+                          <Badge variant={`category${topCategory}` as any}>
+                            CAT {topCategory}: {topFeature}
+                          </Badge>
                         </div>
-
-                        <div className="mt-3 grid grid-cols-5 gap-2 text-center text-xs">
-                          <div className="rounded bg-bg-card p-1.5 border border-border/50">
-                            <span className="text-[10px] text-txt-muted uppercase">UGT</span>
-                            <div className="font-mono font-semibold">{cls.paper.UGT !== null ? cls.paper.UGT.toFixed(3) : "N/A"}</div>
-                          </div>
-                          <div className="rounded bg-bg-card p-1.5 border border-border/50">
-                            <span className="text-[10px] text-txt-muted uppercase">WL</span>
-                            <div className="font-mono font-semibold">{cls.paper.WL !== null ? cls.paper.WL.toFixed(3) : "N/A"}</div>
-                          </div>
-                          <div className="rounded bg-bg-card p-1.5 border border-border/50">
-                            <span className="text-[10px] text-txt-muted uppercase">HDF</span>
-                            <div className="font-mono font-semibold">{cls.paper.HDF !== null ? cls.paper.HDF.toFixed(3) : "N/A"}</div>
-                          </div>
-                          <div className="rounded bg-bg-card p-1.5 border border-border/50">
-                            <span className="text-[10px] text-txt-muted uppercase">PDD</span>
-                            <div className="font-mono font-semibold">{cls.paper.PDD !== null ? cls.paper.PDD.toFixed(3) : "N/A"}</div>
-                          </div>
-                          <div className="rounded bg-bg-card p-1.5 border border-border/50">
-                            <span className="text-[10px] text-txt-muted uppercase">TC</span>
-                            <div className="font-mono font-semibold">{cls.paper.TC !== null ? cls.paper.TC.toFixed(3) : "N/A"}</div>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 flex items-center justify-between text-xs text-txt-muted">
-                          <span>
-                            {cls.sfi.flag_conditions.excess_fragility
-                              ? "Excess performance collapse detected under null permutation."
-                              : "No statistically anomalous fragility detected."}
+                        <div className="flex items-center gap-3 text-xs font-mono">
+                          <span className="text-txt-muted">
+                            SFI: <strong className="text-txt-primary">{cls.sfi.sfi_top !== null ? cls.sfi.sfi_top.toFixed(3) : "N/A"}</strong>
                           </span>
-                          <button
-                            onClick={() => {
-                              setSelectedClass(cls.class);
-                              setActiveStage("DIAGNOSE");
-                              navigate("/diagnostics");
-                            }}
-                            className="text-accent-cyan hover:underline font-semibold"
-                          >
-                            Investigate Class &rarr;
-                          </button>
+                          <span className="text-txt-muted">
+                            F1: <strong className="text-txt-primary">{cls.baseline.f1 !== null ? formatPercent(cls.baseline.f1) : "N/A"}</strong>
+                          </span>
+                          <span className="text-txt-muted">
+                            GGI: <strong className="text-txt-primary">{cls.ggi.gap !== null ? cls.ggi.gap.toFixed(3) : "N/A"}</strong>
+                          </span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      {/* Scientific Heuristics Micro-Grid */}
+                      <div className="grid grid-cols-5 gap-1.5 text-center text-xs">
+                        <div className="rounded bg-bg-card p-1.5 border border-border/60">
+                          <span className="text-[9px] text-txt-muted uppercase font-bold">UGT</span>
+                          <div className="font-mono text-xs font-semibold text-txt-primary">
+                            {cls.paper.UGT !== null ? cls.paper.UGT.toFixed(3) : "N/A"}
+                          </div>
+                        </div>
+                        <div className="rounded bg-bg-card p-1.5 border border-border/60">
+                          <span className="text-[9px] text-txt-muted uppercase font-bold">WL</span>
+                          <div className="font-mono text-xs font-semibold text-txt-primary">
+                            {cls.paper.WL !== null ? cls.paper.WL.toFixed(3) : "N/A"}
+                          </div>
+                        </div>
+                        <div className="rounded bg-bg-card p-1.5 border border-border/60">
+                          <span className="text-[9px] text-txt-muted uppercase font-bold">HDF</span>
+                          <div className="font-mono text-xs font-semibold text-txt-primary">
+                            {cls.paper.HDF !== null ? cls.paper.HDF.toFixed(3) : "N/A"}
+                          </div>
+                        </div>
+                        <div className="rounded bg-bg-card p-1.5 border border-border/60">
+                          <span className="text-[9px] text-txt-muted uppercase font-bold">PDD</span>
+                          <div className="font-mono text-xs font-semibold text-txt-primary">
+                            {cls.paper.PDD !== null ? cls.paper.PDD.toFixed(3) : "N/A"}
+                          </div>
+                        </div>
+                        <div className="rounded bg-bg-card p-1.5 border border-border/60">
+                          <span className="text-[9px] text-txt-muted uppercase font-bold">TC</span>
+                          <div className="font-mono text-xs font-semibold text-txt-primary">
+                            {cls.paper.TC !== null ? cls.paper.TC.toFixed(3) : "N/A"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-txt-muted pt-1">
+                        <span className="text-[11px] truncate max-w-[400px]">
+                          {cls.sfi.flag_conditions.excess_fragility
+                            ? "Excess performance collapse detected under null feature permutation."
+                            : "Within null Monte Carlo distribution bounds."}
+                        </span>
+                        <button
+                          onClick={() => {
+                            setSelectedClass(cls.class);
+                            setActiveStage("DIAGNOSE");
+                            navigate("/diagnostics");
+                          }}
+                          className="text-accent-secondary hover:text-accent-primary font-semibold text-xs flex items-center gap-1 transition-colors shrink-0"
+                        >
+                          Investigate Class <ArrowRight className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
               ) : (
-                <div className="py-12 text-center text-txt-muted space-y-3">
-                  <Database className="h-8 w-8 mx-auto text-txt-muted/60" />
-                  <p className="text-sm font-medium">No active audit results loaded.</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setActiveStage("INGEST");
-                      navigate("/ingestion");
-                    }}
-                  >
-                    Select Benchmark & Run Audit
-                  </Button>
-                </div>
+                <EmptyState
+                  title="No Audit Intelligence Loaded"
+                  description="Select a benchmark dataset and execute an audit to view key vulnerability findings."
+                  actionLabel="Configure Audit"
+                  onAction={() => {
+                    setActiveStage("INGEST");
+                    navigate("/ingestion");
+                  }}
+                />
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Column: Recent Audits & Dataset Health */}
-        <div className="space-y-6" id="audit-history-section">
+        {/* Right Column (1/3 width): Execution History & Quick Navigation */}
+        <div className="space-y-4" id="audit-history-panel">
           <Card>
-            <CardHeader>
-              <CardTitle>
-                <History className="h-4 w-4 text-txt-secondary" />
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm">
+                <History className="h-4 w-4 text-txt-muted" />
                 Audit Execution History
               </CardTitle>
-              <CardDescription>Local-first execution records</CardDescription>
+              <CardDescription>Local-first cryptographic execution log</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 space-y-2.5 max-h-[380px] overflow-y-auto scrollbar-thin">
               {audits.length > 0 ? (
-                <div className="space-y-3">
-                  {audits.map((a) => {
-                    const isSelected = activeRunId === a.run_id;
-                    return (
-                      <div
-                        key={a.run_id}
-                        onClick={async () => {
-                          setActiveRunId(a.run_id);
-                          try {
-                            const res = await api.getAuditResults(a.run_id);
-                            setLatestRunResult(res);
-                          } catch {
-                            // Ignored
+                audits.map((a) => {
+                  const isSelected = activeRunId === a.run_id;
+                  return (
+                    <div
+                      key={a.run_id}
+                      onClick={async () => {
+                        setActiveRunId(a.run_id);
+                        try {
+                          const res = await api.getAuditResults(a.run_id);
+                          setLatestRunResult(res);
+                        } catch {
+                          // Ignored
+                        }
+                      }}
+                      className={`cursor-pointer rounded-lg border p-2.5 transition-all select-none ${
+                        isSelected
+                          ? "border-accent-primary bg-accent-primary/10 shadow-sm"
+                          : "border-border bg-bg-card hover:border-border-active hover:bg-bg-elevated/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs font-mono">
+                        <span className="font-bold text-txt-primary truncate max-w-[130px]" title={a.run_id}>
+                          {a.run_id}
+                        </span>
+                        <Badge
+                          variant={
+                            a.status === "COMPLETED"
+                              ? "success"
+                              : a.status === "RUNNING"
+                              ? "warning"
+                              : a.status === "FAILED"
+                              ? "danger"
+                              : "outline"
                           }
-                        }}
-                        className={`cursor-pointer rounded-lg border p-3 transition-all ${
-                          isSelected
-                            ? "border-accent-primary bg-accent-primary/10 shadow-md"
-                            : "border-border bg-bg-card hover:border-border-active/50"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-xs font-mono">
-                          <span className="font-bold text-txt-primary truncate max-w-[140px]">
-                            {a.run_id}
-                          </span>
-                          <Badge
-                            variant={
-                              a.status === "COMPLETED"
-                                ? "success"
-                                : a.status === "RUNNING"
-                                ? "warning"
-                                : a.status === "FAILED"
-                                ? "danger"
-                                : "outline"
-                            }
-                          >
-                            {a.status}
-                          </Badge>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between text-[11px] text-txt-muted">
-                          <span>Dataset: {a.dataset_id}</span>
-                          <span>{a.elapsed_seconds}s</span>
-                        </div>
+                        >
+                          {a.status}
+                        </Badge>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="mt-1.5 flex items-center justify-between text-[11px] text-txt-muted">
+                        <span className="truncate max-w-[120px]">{a.dataset_id}</span>
+                        <span>{a.elapsed_seconds}s</span>
+                      </div>
+                    </div>
+                  );
+                })
               ) : (
                 <div className="py-8 text-center text-xs text-txt-muted">
-                  No previous audit runs recorded.
+                  No local audit runs recorded yet.
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Quick Actions Card */}
+          {/* Quick Workstation Shortcuts */}
           <Card elevated>
-            <CardHeader>
+            <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm">Research Workstation Actions</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="p-4 space-y-2">
               <Button
                 variant="secondary"
                 size="sm"
-                className="w-full justify-start gap-2"
+                className="w-full justify-start gap-2.5 text-xs"
                 onClick={() => {
-                  setActiveStage("OVERVIEW");
+                  setActiveStage("MATRIX");
                   navigate("/heatmap");
                 }}
               >
-                <Layers className="h-4 w-4 text-accent-cyan" />
+                <Layers className="h-3.5 w-3.5 text-accent-secondary" />
                 Inspect Cross-Class Smell Matrix
               </Button>
               <Button
                 variant="secondary"
                 size="sm"
-                className="w-full justify-start gap-2"
+                className="w-full justify-start gap-2.5 text-xs"
+                onClick={() => {
+                  setActiveStage("DIAGNOSE");
+                  navigate("/diagnostics");
+                }}
+              >
+                <Microscope className="h-3.5 w-3.5 text-status-warning" />
+                Shortcut Diagnostic Lab
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full justify-start gap-2.5 text-xs"
                 onClick={() => {
                   setActiveStage("REMEDIATE");
                   navigate("/remediation");
                 }}
               >
-                <ShieldCheck className="h-4 w-4 text-status-success" />
+                <ShieldCheck className="h-3.5 w-3.5 text-status-success" />
                 Configure Safe Remediation (RSM)
               </Button>
               <Button
                 variant="secondary"
                 size="sm"
-                className="w-full justify-start gap-2"
+                className="w-full justify-start gap-2.5 text-xs"
                 onClick={() => {
                   setActiveStage("VERIFY");
                   navigate("/reports");
                 }}
               >
-                <FileText className="h-4 w-4 text-accent-primary" />
+                <FileText className="h-3.5 w-3.5 text-accent-primary" />
                 Generate Offline HTML Audit Report
               </Button>
             </CardContent>

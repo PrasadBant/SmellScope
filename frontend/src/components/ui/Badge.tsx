@@ -5,24 +5,37 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?:
     | "default"
     | "success"
+    | "clean"
     | "warning"
+    | "borderline"
     | "danger"
+    | "critical"
     | "published"
     | "synthetic"
     | "cached"
     | "outline"
+    | "secondary"
     | "categoryA"
     | "categoryB"
     | "categoryC"
     | "categoryD";
 }
 
-export const Badge: React.FC<BadgeProps> = ({ className, variant = "default", children, ...props }) => {
+export const Badge: React.FC<BadgeProps> = ({
+  className,
+  variant = "default",
+  children,
+  ...props
+}) => {
   const variantStyles = {
-    default: "bg-accent-primary/20 text-indigo-300 border-accent-primary/30",
+    default: "bg-accent-primary/15 text-accent-secondary border-accent-primary/30",
+    secondary: "bg-bg-elevated text-txt-secondary border-border",
     success: "bg-status-success/15 text-emerald-400 border-status-success/30",
+    clean: "bg-status-success/15 text-emerald-400 border-status-success/30",
     warning: "bg-status-warning/15 text-amber-400 border-status-warning/30",
+    borderline: "bg-status-warning/15 text-amber-400 border-status-warning/30",
     danger: "bg-status-block/15 text-rose-400 border-status-block/30",
+    critical: "bg-status-block/15 text-rose-400 border-status-block/30",
     published: "bg-evidence-published/15 text-sky-400 border-evidence-published/30",
     synthetic: "bg-evidence-synthetic/15 text-purple-400 border-evidence-synthetic/30",
     cached: "bg-evidence-cached/15 text-orange-400 border-evidence-cached/30",
