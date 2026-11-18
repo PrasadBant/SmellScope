@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+.venv
+env/
+venv/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+
+# SmellScope Local Runtime Artifacts
+runs/
+reports/
+data/uploads/
+master_prompt.md

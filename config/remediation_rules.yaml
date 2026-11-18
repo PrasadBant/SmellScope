@@ -1,0 +1,18 @@
+rules:
+  quarantine_ephemeral_ports:
+    name: "Quarantine Ephemeral Ports"
+    description: "Quarantine flows with ephemeral destination ports (> 49151) that exhibit background traffic leakage."
+    target_column_by_schema:
+      cic-ids-2017: "Destination Port"
+      unsw-nb15: "dsport"
+      synthetic-planted: "Destination Port"
+    threshold: 49151
+    operator: "gt"
+  quarantine_zero_window:
+    name: "Quarantine Zero TCP Window"
+    description: "Quarantine flows with zero backward TCP window size."
+    target_column_by_schema:
+      cic-ids-2017: "Init_Win_bytes_backward"
+      unsw-nb15: "swin"
+    threshold: 0
+    operator: "eq"

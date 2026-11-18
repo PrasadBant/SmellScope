@@ -1,0 +1,43 @@
+app:
+  title: "SmellScope 2.0"
+  subtitle: "Scientific Dataset Trust Audit Workstation"
+  disclaimer: "SmellScope is a scientific benchmark dataset auditor, NOT a live network intrusion detection system."
+palette:
+  background: "#0B0F19"
+  workspace: "#0F1724"
+  sidebar: "#0D1420"
+  card: "#111827"
+  elevated_card: "#182234"
+  border: "#263244"
+  text_primary: "#F8FAFC"
+  text_secondary: "#CBD5E1"
+  text_muted: "#94A3B8"
+  accent_primary: "#6366F1"
+  accent_cyan: "#38BDF8"
+  status_success: "#16A34A"
+  status_warning: "#D97706"
+  status_block: "#DC2626"
+  evidence_published: "#0284C7"
+  evidence_synthetic: "#9333EA"
+  evidence_cached: "#EA580C"
+heuristics:
+  UGT:
+    full_name: "Unassigned/Ghost Traffic"
+    description: "Evaluates whether network flows route to reserved or inactive port ranges."
+  WL:
+    full_name: "Window Length Anomaly"
+    description: "Measures 4-gram window repetition and synthetic packet periodicity."
+  HDF:
+    full_name: "High Dimension Feature Dominance"
+    description: "Measures the Gini concentration of feature importances in single-feature classifiers."
+  PDD:
+    full_name: "Partition Distance Disparity"
+    description: "Detects non-random cluster concentration between benign and attack classes."
+  TC:
+    full_name: "Temporal Concentration"
+    description: "Quantifies burst clustering within anomalous inter-arrival temporal windows."
+taxonomy:
+  A: "Controllable (High Risk)"
+  B: "Semantically Meaningful"
+  C: "Context Dependent"
+  D: "Uncontrollable / Artifact"

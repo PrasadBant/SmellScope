@@ -1,0 +1,71 @@
+"""Report generation and offline download router."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import uuid
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
+
+from smellscope.core.errors import SmellScopeError
+from smellscope.reporting.generator import generate_offline_html_report
+from smellscope.server.dependencies import audit_job_manager, remediation_session_manager
+from smellscope.server.schemas.models import (
+    ReportGenerateRequest,
+    ReportGenerateResponse,
+)
+
+router = APIRouter(prefix="/audits/{run_id}/reports", tags=["Offline Reports"])
+
+
+@router.post("", response_model=ReportGenerateResponse)
+def generate_report(run_id: str, req: ReportGenerateRequest) -> ReportGenerateResponse:
+    """Generate a self-contained offline HTML report with embedded styles and cryptographic fingerprints."""
+    job = audit_job_manager.get_job(run_id)
+    if not job or not job.result:
+        raise HTTPException(status_code=404, detail=f"Audit run '{run_id}' not found or incomplete.")
+
+    rebenchmark_res = None
+    change_log = None
+    if req.include_rebenchmark:
+        rebenchmark_res = remediation_session_manager.get_last_rebenchmark(run_id)
+        change_log = remediation_session_manager.get_change_log(run_id)
+
+    report_id = f"rep_{uuid.uuid4().hex[:8]}"
+    reports_dir = Path(os.environ.get("SMELLSCOPE_HOME", "./reports"))
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    out_file = reports_dir / f"{report_id}_{run_id}.html"
+
+    try:
+        report_path = generate_offline_html_report(
+            run_result=job.result,
+            rebenchmark_result=rebenchmark_res,
+            change_log=change_log,
+            output_path=str(out_file),
+        )
+        return ReportGenerateResponse(
+            report_id=report_id,
+            run_id=run_id,
+            created_at=job.result.get("created_at", ""),
+            download_url=f"/api/v1/audits/{run_id}/reports/{report_id}/download",
+            file_path=report_path,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {exc}")
+
+
+@router.get("/{report_id}/download")
+def download_report(run_id: str, report_id: str) -> FileResponse:
+    """Download the generated offline HTML report."""
+    reports_dir = Path(os.environ.get("SMELLSCOPE_HOME", "./reports"))
+    matches = list(reports_dir.glob(f"{report_id}_*"))
+    if not matches or not matches[0].exists():
+        raise HTTPException(status_code=404, detail=f"Report '{report_id}' not found.")
+
+    target = matches[0]
+    return FileResponse(
+        path=target,
+        media_type="text/html",
+        filename=target.name,
+    )
