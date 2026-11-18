@@ -3,7 +3,7 @@
 **Member:** Member 1 (Research Core: heuristics, SFI, GGI, evaluation)  
 **Branch:** `feature/member-1-core-engine`  
 **Total Allocated Budget:** 6.5 person-hours  
-**Cumulative Hours Used:** 5.3 h  
+**Cumulative Hours Used:** 6.0 h  
 
 ---
 
@@ -16,28 +16,23 @@
 | **Phase 2** | Architecture & Contracts | 0.7 | 0.7 | **Completed** | Authorized by user ("next") |
 | **Phase 3** | Core Implementation (Freeze at end) | 2.8 | 2.8 | **Completed** | Authorized by user ("next") |
 | **Phase 4** | Testing & Validation (E1, E2, E5) | 1.0 | 1.0 | **Completed** | Authorized by user ("next") |
-| **Phase 5** | Integration Readiness | 0.7 | 0.0 | Pending | Awaiting user authorization |
-| **Phase 6** | Final Delivery & Handover | 0.5 | 0.0 | Pending | Pending Phase 5 sign-off |
+| **Phase 5** | Integration Readiness | 0.7 | 0.7 | **Completed** | Authorized by user ("next") |
+| **Phase 6** | Final Delivery & Handover | 0.5 | 0.0 | Pending | Awaiting user authorization |
 
 ---
 
-## Phase 4 Execution Record
+## Phase 5 Execution Record
 
 - **Status:** Completed
-- **Objectives:** Validate all core components, execute experiments E1, E2, and E5, measure performance and code coverage, resolve defects, and produce test and defect reports.
+- **Objectives:** Verify contract conformance across public core functions, harden `audit_class` against raw column formatting and non-contiguous `__row_id` indexing, author API reference and developer integration guide (`CORE_API.md`), and confirm clean test execution.
 - **Deliverables Produced:**
-  - `experiments/e1_reproduction.py` & `docs/research/E1_results.md` (Literature reproduction comparison)
-  - `experiments/e2_planted_shortcut.py` & `docs/research/E2_results.md` (20-seed planted recovery validation)
-  - `experiments/e5_generalisation_gap.py` & `docs/research/E5_results.md` (Generalisation Gap Index experiment)
-  - `docs/team-execution/member-1/DEFECTS.md` (Defect log documenting DEF-001 and DEF-002 resolutions)
-  - `docs/team-execution/member-1/TEST_REPORT.md` (Comprehensive test execution and benchmark report)
+  - `docs/research/CORE_API.md`: Detailed developer setup, API reference, parameter definitions, and Member 2/Member 3 integration code examples.
+  - `tests/core/test_integration_readiness.py`: Automated integration tests covering realistic CIC-like raw headers with leading spaces, non-contiguous row IDs, and public contract function checks.
+  - Hardened `smellscope/core/audit.py` with automatic, non-destructive `__row_id` assignment.
 - **Verification Details:**
-  - Automated test suite: 24/24 unit, contract, and regression tests passed.
-  - Performance timing: 20,000-row sample audited in 9.73s (well under $\le 90$s target).
-  - Code coverage: 77.4% raw / 82.5% effective statement coverage across `smellscope/core`.
-  - Experiment E1: Measured metrics matched published values within target $\pm 0.10$ across all categories.
-  - Experiment E2: Planted shortcut recovery rate reached 100.0% (target $\ge 90\%$) with 0.0% false-positive rate (target $\le 10\%$). Primary hypothesis H1 empirically supported on synthetic ground truth.
-  - Experiment E5: Confirmed $GGI = +1.000$ on disjoint capture distributions versus $GGI = -0.000$ on homogeneous controls.
+  - Full core test suite: **26/26 tests passed in 19.16s** with 100% pass rate.
+  - Integration readiness tests confirmed that raw column names with leading spaces (e.g. `" Destination Port"`, `" Flow Duration"`) and non-contiguous row IDs are handled seamlessly.
+  - Checked external dependencies: Member 2 branch not yet present in repository; `tests/fixtures/core/split_stub.py` confirmed working as local integration stand-in.
 - **Key Decisions:**
-  - D-009: Resolved DEF-001 by recognizing that a zero-variance null distribution ($\sigma_{\text{null}} = 0$) with positive $\Delta\text{SFI}$ indicates total lack of fragility across non-shortcut features, satisfying excess fragility.
-- **Blockers / Issues:** None. Ready for Phase 5.
+  - D-010: Documented integration checklist and explicit code snippets in `CORE_API.md` showing how Member 2's orchestrator and RSM engine should consume `audit_class`, `get_cluster_assignments`, and `fit_and_evaluate`.
+- **Blockers / Issues:** None. Ready for Phase 6.

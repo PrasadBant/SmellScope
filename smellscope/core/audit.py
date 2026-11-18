@@ -80,6 +80,11 @@ def audit_class(
     if n_cls < 2:
         raise SmellScopeError("E_CLASS_TOO_SMALL", f"Class '{cls}' has only {n_cls} rows (need >= 2)")
 
+    # Ensure __row_id exists safely
+    if "__row_id" not in df.columns:
+        df = df.copy()
+        df["__row_id"] = np.arange(len(df), dtype=int)
+
     na_reasons: dict[str, str] = {}
     seed = int(cfg.get("seed", 42))
 
