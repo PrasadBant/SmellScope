@@ -3,17 +3,22 @@
 <!-- MEMBER-1-START -->
 ### Member 1: Research Core (heuristics, SFI, GGI, evaluation)
 - **Branch:** `feature/member-1-core-engine`
-- **Current Phase:** Phase 0 Completed, Phase 1 Pending Approval
+- **Current Phase:** Phase 1 Completed, Phase 2 Pending Approval
 - **Status:** GREEN (On track)
-- **Cumulative Hours:** 0.3 / 6.5 h
-- **Completed Phases:** Phase 0 (Context and Repository Audit)
+- **Cumulative Hours:** 0.8 / 6.5 h
+- **Completed Phases:** 
+  - Phase 0: Context and Repository Audit (0.3 h)
+  - Phase 1: Requirements and Specifications (0.5 h)
 - **Deliverables Completed:**
-  - `docs/audit/member-1/REPO_AUDIT.md`
-  - `docs/audit/member-1/PROJECT_UNDERSTANDING.md`
-  - `docs/audit/member-1/OWNERSHIP.md`
+  - `config/heuristics.yaml`
+  - `docs/research/PREREGISTRATION.md`
+  - `docs/team-execution/member-1/PRD.md`
+  - `docs/team-execution/member-1/FRD.md`
+  - `docs/team-execution/member-1/NFR.md`
+  - `docs/team-execution/member-1/TRACEABILITY.md`
   - `docs/team-execution/member-1/PHASE_PROGRESS.md`
-- **Current Dependencies / Mocks:** None in Phase 0; using `split_stub.py` starting in Phase 2 for standalone core testing.
-- **Contract Adherence:** Verified against Shared Contract v1.0 specifications.
+- **Current Dependencies / Mocks:** `split_stub.py` planned for Phase 2.
+- **Contract Adherence:** Pre-registered parameters aligned with Shared Contract v1.0.
 <!-- MEMBER-1-END -->
 
 <!-- MEMBER-2-START -->
