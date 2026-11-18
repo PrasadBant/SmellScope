@@ -40,6 +40,7 @@ export interface DatasetMetadata {
   };
   class_counts: Record<string, number>;
   columns: string[];
+  status?: string;
 }
 
 export interface DatasetPreview {

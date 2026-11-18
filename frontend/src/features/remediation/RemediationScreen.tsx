@@ -1,614 +1,523 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  ShieldAlert,
   Sliders,
-  ShieldCheck,
-  AlertTriangle,
-  RotateCcw,
   CheckCircle2,
+  AlertTriangle,
   XCircle,
-  FileText,
-  Lock,
   ArrowRight,
-  Database,
-  Search,
+  RotateCcw,
+  Info,
+  Lock,
+  Layers,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { EvidenceBadge } from "@/components/ui/EvidenceBadge";
-import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import { useAuditContext } from "@/stores/AuditContext";
 import { api } from "@/api/client";
-import { RemediationPreview, ViewsResponse, TrainingView, ChangeLogEntry } from "@/types/api";
-import { formatNumber, formatPercent } from "@/utils/cn";
+import { RemediationPreview, ViewsResponse } from "@/types/api";
+
+type RemediationSubStep = "9_PREVIEW" | "10_RSM" | "11_APPLY";
 
 export const RemediationScreen: React.FC = () => {
   const navigate = useNavigate();
   const {
-    activeDatasetId,
     activeRunId,
-    latestRunResult,
-    setLatestRunResult,
     setActiveStage,
+    setRemediationSkipped,
+    latestRunResult,
+    selectedClass,
+    isHydrating,
   } = useAuditContext();
 
-  const [viewsData, setViewsData] = useState<ViewsResponse | null>(null);
-  const [selectedAction, setSelectedAction] = useState<"R1" | "R2">("R1");
-  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
-  const [selectedRule, setSelectedRule] = useState<string>("quarantine_ephemeral_ports");
-  const [featureSearch, setFeatureSearch] = useState<string>("");
-  const [datasetFeatures, setDatasetFeatures] = useState<string[]>([]);
+  const [currentStep, setCurrentStep] = useState<RemediationSubStep>("9_PREVIEW");
+  const [actionType, setActionType] = useState<"R1" | "R2">("R1");
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>(["Init_Win_bytes_backward"]);
+  const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<RemediationPreview | null>(null);
+  const [viewsData, setViewsData] = useState<ViewsResponse | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [warningAck, setWarningAck] = useState(false);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [applying, setApplying] = useState(false);
-  const [rollingBack, setRollingBack] = useState(false);
-  const [rollbackTarget, setRollbackTarget] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Load active view state
   useEffect(() => {
     if (activeRunId) {
       loadViews(activeRunId);
     }
   }, [activeRunId]);
 
-  useEffect(() => {
-    const dsId = activeDatasetId || (latestRunResult ? latestRunResult.dataset.name : null);
-    if (dsId) {
-      api.getDatasetMetadata(dsId)
-        .then((m) => {
-          if (m?.columns) setDatasetFeatures(m.columns);
-        })
-        .catch(console.error);
-    }
-  }, [activeDatasetId, latestRunResult]);
-
-  useEffect(() => {
-    if (latestRunResult && latestRunResult.classes.length > 0 && selectedFeatures.length === 0) {
-      const shortcuts = latestRunResult.classes.flatMap((c) => c.sfi.top_features);
-      if (shortcuts.length > 0) {
-        setSelectedFeatures([shortcuts[0]]);
-      }
-    }
-  }, [latestRunResult]);
-
   const loadViews = async (runId: string) => {
     try {
-      const res = await api.getRemediationViews(runId);
-      setViewsData(res);
+      const v = await api.getRemediationViews(runId);
+      setViewsData(v);
     } catch (err: any) {
-      console.error("Failed to load views", err);
+      console.error("Failed to load views:", err);
     }
   };
 
   const handleGeneratePreview = async () => {
     if (!activeRunId) return;
-    setLoadingPreview(true);
-    setMessage(null);
-    setWarningAck(false);
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const params =
+      actionType === "R1"
+        ? { features: selectedFeatures }
+        : { condition: "outlier_zscore > 3.0", filter_mode: "quarantine" };
 
     try {
-      const params =
-        selectedAction === "R1"
-          ? { features: selectedFeatures }
-          : { rule: selectedRule };
-
-      const res = await api.previewRemediation(activeRunId, selectedAction, params);
-      setPreview(res);
+      const p = await api.previewRemediation(activeRunId, actionType, params);
+      setPreview(p);
+      setCurrentStep("10_RSM");
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "Failed to generate preview." });
+      setErrorMsg(err.message || "Failed to generate remediation preview");
     } finally {
-      setLoadingPreview(false);
+      setLoading(false);
     }
   };
 
   const handleApplyRemediation = async () => {
     if (!activeRunId || !preview) return;
-    setApplying(true);
-    setMessage(null);
+    setLoading(true);
+    setErrorMsg(null);
 
     try {
-      const res = await api.applyRemediation(activeRunId, preview.preview_id, {
+      await api.applyRemediation(activeRunId, preview.preview_id, {
         approved: true,
         warning_ack: warningAck,
         approved_at: new Date().toISOString(),
       });
-
-      setMessage({
-        type: "success",
-        text: `Remediation applied! Successfully advanced to training view ${res.view.view_id}.`,
-      });
-      setPreview(null);
       await loadViews(activeRunId);
+      setSuccessMsg("Remediation applied successfully to training view.");
+      setRemediationSkipped(false);
+      setCurrentStep("11_APPLY");
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "Failed to apply remediation." });
+      setErrorMsg(err.message || "Failed to apply remediation");
     } finally {
-      setApplying(false);
+      setLoading(false);
     }
   };
 
-  const executeRollback = async () => {
-    if (!activeRunId || !rollbackTarget) return;
-    setRollingBack(true);
-    setMessage(null);
-
+  const handleRollback = async (entryId: string) => {
+    if (!activeRunId) return;
+    setLoading(true);
+    setErrorMsg(null);
     try {
-      const res = await api.rollback(activeRunId, rollbackTarget);
-      setMessage({
-        type: "success",
-        text: `${res.message} (Restored to view ${res.restored_view.view_id})`,
-      });
+      await api.rollback(activeRunId, entryId);
       await loadViews(activeRunId);
+      setSuccessMsg("Rollback executed successfully. Previous training view restored.");
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "Rollback operation failed." });
+      setErrorMsg(err.message || "Rollback failed");
     } finally {
-      setRollingBack(false);
-      setRollbackTarget(null);
+      setLoading(false);
     }
   };
 
-  if (!activeRunId) {
+  if (isHydrating && (!activeRunId || !latestRunResult)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+        <p className="text-xs text-txt-muted font-mono">Loading remediation workspace...</p>
+      </div>
+    );
+  }
+
+  if (!activeRunId || !latestRunResult) {
     return (
       <EmptyState
-        title="No Active Audit Run"
-        description="Execute an audit first to enable remediation safeguards and counterfactual training views."
+        title="Audit Results Required for Remediation"
+        description="Please complete an audit first before exploring experimental remediation views."
+        actionLabel="Go to Audit Setup"
+        onAction={() => {
+          setActiveStage("AUDIT");
+          navigate("/audit");
+        }}
       />
     );
   }
 
-  const candidateShortcuts = latestRunResult
-    ? latestRunResult.classes.flatMap((c) => c.sfi.top_features)
-    : [];
-  const uniqueCandidateFeatures = Array.from(
-    new Set([...candidateShortcuts, ...datasetFeatures])
-  );
-
-  const filteredCandidateFeatures = uniqueCandidateFeatures.filter((f) =>
-    f.toLowerCase().includes(featureSearch.toLowerCase())
-  );
-
-  const activeView = viewsData?.active_view;
   const rsmReport = preview?.rsm_report;
-  const isBlock = rsmReport?.status === "BLOCK";
+  const isBlocked = rsmReport?.status === "BLOCK";
   const isWarn = rsmReport?.status === "WARN";
-  const canApply = preview && !isBlock && (!isWarn || warningAck);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <SectionHeader
-        icon={Sliders}
-        title="Remediation Lab & Remediation Safety Monitor (RSM)"
-        description="Simulate and execute reversible counterfactual remediations (feature ablation & traffic quarantine) guarded by independent backend safety checks."
-        badge={<EvidenceBadge type="target" />}
-        actions={
-          activeView && (
-            <div className="flex items-center gap-2 text-xs font-mono bg-bg-card px-3 py-1.5 rounded-lg border border-border">
-              <span className="text-txt-muted">Active View:</span>
-              <strong className="text-accent-secondary">{activeView.view_id}</strong>
-              <span className="text-txt-muted">({formatNumber(activeView.n_included)} train flows)</span>
-            </div>
-          )
-        }
-      />
-
-      {/* Optional Stage Notice Banner */}
-      <div className="rounded-xl border border-border bg-bg-card p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <Badge variant="secondary">OPTIONAL WORKFLOW STAGE</Badge>
-          <span className="text-xs text-txt-muted">
-            Remediation is optional. You can skip this step and generate a report on your original benchmark dataset at any time.
-          </span>
+    <div className="space-y-6 max-w-6xl mx-auto pb-12">
+      {/* Prominent Optional Activity Notice */}
+      <div className="p-4 rounded-xl border border-sky-800/80 bg-sky-950/30 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-900/60 border border-sky-700/60 text-sky-300 font-bold uppercase">
+              OPTIONAL EXPERIMENTAL ACTIVITY
+            </span>
+            <span className="text-xs text-slate-300 font-semibold">Stage 04 · Remediation Lab</span>
+          </div>
+          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+            Remediation is an experimental follow-up to test whether changing a suspected dataset characteristic affects model evaluation. It does not automatically prove dataset quality has improved.
+          </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
+
+        <button
           onClick={() => {
+            setRemediationSkipped(true);
             setActiveStage("REPORTS");
             navigate("/reports");
           }}
-          className="text-xs shrink-0"
+          className="text-xs text-sky-400 hover:text-white flex items-center gap-1 font-semibold shrink-0 transition-colors"
         >
           Skip to Reports &rarr;
-        </Button>
+        </button>
       </div>
 
-      {message && (
-        <div
-          className={`rounded-xl border p-3.5 text-xs flex items-center gap-3 ${
-            message.type === "success"
-              ? "border-status-success/40 bg-status-success/10 text-emerald-300"
-              : "border-status-block/40 bg-status-block/10 text-rose-300"
+      {/* Sub-step Selector */}
+      <div className="flex items-center rounded-lg border border-border bg-bg-card p-1 text-xs">
+        <button
+          onClick={() => setCurrentStep("9_PREVIEW")}
+          className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+            currentStep === "9_PREVIEW"
+              ? "bg-accent-primary text-white shadow-sm"
+              : "text-txt-muted hover:text-txt-primary"
           }`}
         >
-          {message.type === "success" ? (
-            <CheckCircle2 className="h-4 w-4 text-status-success shrink-0" />
-          ) : (
-            <XCircle className="h-4 w-4 text-status-block shrink-0" />
-          )}
-          <span>{message.text}</span>
+          Step 9 · Preview
+        </button>
+        <button
+          onClick={() => setCurrentStep("10_RSM")}
+          disabled={!preview}
+          className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+            currentStep === "10_RSM"
+              ? "bg-accent-primary text-white shadow-sm"
+              : "text-txt-muted hover:text-txt-primary disabled:opacity-40"
+          }`}
+        >
+          Step 10 · Safety Check (RSM)
+        </button>
+        <button
+          onClick={() => setCurrentStep("11_APPLY")}
+          disabled={!viewsData?.change_log?.length}
+          className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+            currentStep === "11_APPLY"
+              ? "bg-accent-primary text-white shadow-sm"
+              : "text-txt-muted hover:text-txt-primary disabled:opacity-40"
+          }`}
+        >
+          Step 11 · Applied Lineage
+        </button>
+      </div>
+
+      {errorMsg && (
+        <div className="p-4 rounded-xl border border-rose-800/80 bg-rose-950/40 text-rose-200 text-xs flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold">Remediation Alert</p>
+            <p className="leading-relaxed">{errorMsg}</p>
+          </div>
         </div>
       )}
 
-      {/* 3-Column Remediation Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Col 1: Action Configuration */}
-        <Card className="lg:col-span-1">
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm">1. Strategy Configuration</CardTitle>
-            <CardDescription>Select counterfactual intervention method</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 space-y-4">
-            {/* Strategy Selector Toggle */}
-            <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
-              <button
-                onClick={() => {
-                  setSelectedAction("R1");
-                  setPreview(null);
-                }}
-                className={`py-2 px-3 rounded-lg border text-center transition-all ${
-                  selectedAction === "R1"
-                    ? "bg-accent-primary text-white border-accent-primary shadow-sm font-bold"
-                    : "bg-bg-elevated text-txt-secondary border-border hover:text-txt-primary"
-                }`}
-              >
-                R1 Feature Ablation
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedAction("R2");
-                  setPreview(null);
-                }}
-                className={`py-2 px-3 rounded-lg border text-center transition-all ${
-                  selectedAction === "R2"
-                    ? "bg-accent-primary text-white border-accent-primary shadow-sm font-bold"
-                    : "bg-bg-elevated text-txt-secondary border-border hover:text-txt-primary"
-                }`}
-              >
-                R2 Flow Quarantine
-              </button>
-            </div>
+      {successMsg && (
+        <div className="p-4 rounded-xl border border-emerald-800/80 bg-emerald-950/40 text-emerald-300 text-xs flex items-center gap-3">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+          <span>{successMsg}</span>
+        </div>
+      )}
 
-            {selectedAction === "R1" ? (
-              /* R1 Feature Selection */
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-txt-muted block">
-                    Candidate Features
-                  </label>
-                  <span className="text-[10px] text-accent-secondary font-mono">
-                    {selectedFeatures.length} selected
-                  </span>
+      {/* ========================================================================= */}
+      {/* STEP 9 — REMEDIATION PREVIEW (Explore Possible Improvements)               */}
+      {/* ========================================================================= */}
+      {currentStep === "9_PREVIEW" && (
+        <div className="space-y-6">
+          <div className="p-4 rounded-xl border border-border bg-bg-card">
+            <h3 className="text-base font-bold text-txt-primary">Explore Possible Improvements</h3>
+            <p className="text-xs text-txt-muted mt-1 leading-relaxed">
+              Preview a possible correction and see how it may affect the training data before applying anything. Preview does not modify the original dataset or locked test records.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Operation Selector */}
+            <Card>
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm">Select Supported Remediation Action</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setActionType("R1")}
+                    className={`p-3.5 rounded-xl border text-left transition-all ${
+                      actionType === "R1"
+                        ? "border-accent-primary bg-accent-primary/10 text-txt-primary"
+                        : "border-border bg-bg-elevated text-txt-muted hover:text-txt-primary"
+                    }`}
+                  >
+                    <span className="font-bold block text-sm">R1 Feature Ablation</span>
+                    <span className="text-[11px] block mt-1">
+                      Remove selected candidate shortcut features from the training-data view.
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setActionType("R2")}
+                    className={`p-3.5 rounded-xl border text-left transition-all ${
+                      actionType === "R2"
+                        ? "border-accent-primary bg-accent-primary/10 text-txt-primary"
+                        : "border-border bg-bg-elevated text-txt-muted hover:text-txt-primary"
+                    }`}
+                  >
+                    <span className="font-bold block text-sm">R2 Flow Quarantine</span>
+                    <span className="text-[11px] block mt-1">
+                      Isolate candidate anomalous traffic records in a separate controlled view.
+                    </span>
+                  </button>
                 </div>
 
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-bg-elevated text-xs">
-                  <Search className="h-3.5 w-3.5 text-txt-muted shrink-0" />
-                  <input
-                    type="text"
-                    placeholder="Search features..."
-                    value={featureSearch}
-                    onChange={(e) => setFeatureSearch(e.target.value)}
-                    className="w-full bg-transparent text-xs text-txt-primary focus:outline-none placeholder:text-txt-muted"
-                  />
-                </div>
+                {actionType === "R1" && (
+                  <div className="space-y-2 pt-2">
+                    <label className="font-semibold text-txt-primary block">Candidate Shortcut Features to Ablate:</label>
+                    <div className="space-y-1.5 font-mono">
+                      {["Init_Win_bytes_backward", "Destination Port", "Flow_Duration"].map((feat) => {
+                        const isChecked = selectedFeatures.includes(feat);
+                        return (
+                          <label key={feat} className="flex items-center gap-2 p-2 rounded bg-bg-elevated border border-border cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedFeatures([...selectedFeatures, feat]);
+                                else setSelectedFeatures(selectedFeatures.filter((f) => f !== feat));
+                              }}
+                              className="rounded border-border text-accent-primary"
+                            />
+                            <span className="text-txt-primary">{feat}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-                <div className="max-h-52 overflow-y-auto space-y-1 rounded-lg border border-border bg-bg-main/50 p-2 text-xs scrollbar-thin">
-                  {filteredCandidateFeatures.map((feat) => {
-                    const isChecked = selectedFeatures.includes(feat);
-                    const isShortcut = candidateShortcuts.includes(feat);
-                    return (
-                      <label
-                        key={feat}
-                        className="flex items-center justify-between p-1.5 rounded hover:bg-bg-elevated/70 cursor-pointer select-none"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) setSelectedFeatures([...selectedFeatures, feat]);
-                              else setSelectedFeatures(selectedFeatures.filter((f) => f !== feat));
-                            }}
-                            className="rounded border-border text-accent-primary focus:ring-accent-primary bg-bg-elevated"
-                          />
-                          <span className="font-mono text-txt-primary truncate text-xs">{feat}</span>
-                        </div>
-                        {isShortcut && (
-                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-status-warning/15 text-status-warning border border-status-warning/30 font-semibold shrink-0">
-                            Shortcut
-                          </span>
-                        )}
-                      </label>
-                    );
-                  })}
-                  {filteredCandidateFeatures.length === 0 && (
-                    <p className="text-txt-muted py-3 text-center text-xs">No matching features found.</p>
-                  )}
+            {/* View State Card */}
+            <Card>
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm">Current Training View & Provenance</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3 text-xs font-mono">
+                <div className="flex justify-between p-2 rounded bg-bg-elevated border border-border">
+                  <span className="text-txt-muted">Active View ID:</span>
+                  <span className="text-accent-secondary font-bold">{viewsData?.active_view?.view_id || "view_0000"}</span>
                 </div>
-              </div>
-            ) : (
-              /* R2 Quarantine Rule Selection */
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-txt-muted block">
-                  Quarantine Heuristic Rule
-                </label>
-                <select
-                  value={selectedRule}
-                  onChange={(e) => setSelectedRule(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-xs text-txt-primary focus:outline-none"
-                >
-                  <option value="quarantine_ephemeral_ports">
-                    Quarantine Ephemeral Ports (&gt; 49151)
-                  </option>
-                  <option value="quarantine_zero_window">
-                    Quarantine Zero TCP Window (Win = 0)
-                  </option>
-                </select>
-                <p className="text-[11px] text-txt-muted leading-relaxed">
-                  Quarantines candidate shortcut traffic exclusively within the training partition; test partition remains locked.
-                </p>
-              </div>
-            )}
+                <div className="flex justify-between p-2 rounded bg-bg-elevated border border-border">
+                  <span className="text-txt-muted">Parent View ID:</span>
+                  <span className="text-txt-primary">{viewsData?.active_view?.parent_view_id || "None (Root Baseline)"}</span>
+                </div>
+                <div className="flex justify-between p-2 rounded bg-bg-elevated border border-border">
+                  <span className="text-txt-muted">Excluded Features:</span>
+                  <span className="text-txt-secondary">{viewsData?.active_view?.excluded_features?.length || 0} features</span>
+                </div>
+                <div className="p-3 rounded-lg border border-border bg-bg-elevated/40 text-[11px] text-txt-muted font-sans leading-relaxed">
+                  <Lock className="h-3.5 w-3.5 text-status-success inline mr-1" />
+                  <strong>Locked Test Invariant:</strong> The 20% test partition is strictly sealed and preserved bit-for-bit across all views.
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
+          {/* Action Footer */}
+          <div className="p-4 rounded-xl border border-border bg-bg-card flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={() => {
+                setActiveStage("FINDINGS");
+                navigate("/findings");
+              }}
+            >
+              Cancel and Return to Findings
+            </Button>
             <Button
               variant="primary"
               size="md"
-              className="w-full gap-2 text-xs font-bold"
-              isLoading={loadingPreview}
+              className="gap-2 font-bold"
+              isLoading={loading}
               onClick={handleGeneratePreview}
             >
-              Generate What-If Preview & Check RSM
+              CONTINUE TO SAFETY CHECK <ArrowRight className="h-4 w-4" />
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      )}
 
-        {/* Col 2 & 3: What-If Impact & RSM Governance */}
-        <div className="lg:col-span-2 space-y-4">
-          <Card>
-            <CardHeader className="py-3 px-4">
-              <div className="flex items-center justify-between w-full">
-                <CardTitle className="text-sm">2. Remediation Safety Monitor (RSM) Authorization</CardTitle>
-                {rsmReport && (
-                  <Badge
-                    variant={
-                      rsmReport.status === "PASS"
-                        ? "success"
-                        : rsmReport.status === "WARN"
-                        ? "warning"
-                        : "danger"
-                    }
-                  >
-                    RSM {rsmReport.status}
-                  </Badge>
-                )}
+      {/* ========================================================================= */}
+      {/* STEP 10 — REMEDIATION SAFETY MONITOR (RSM)                                 */}
+      {/* ========================================================================= */}
+      {currentStep === "10_RSM" && preview && rsmReport && (
+        <div className="space-y-6">
+          <div className="p-4 rounded-xl border border-border bg-bg-card">
+            <h3 className="text-base font-bold text-txt-primary">Check Remediation Safety</h3>
+            <p className="text-xs text-txt-muted mt-1 leading-relaxed">
+              Before applying this change, SmellScope checks whether the proposed operation could damage dataset integrity or evaluation validity.
+            </p>
+          </div>
+
+          {/* RSM Authorization Decision Header */}
+          <Card className={`border-2 ${
+            isBlocked ? "border-rose-800 bg-rose-950/20" : isWarn ? "border-amber-800 bg-amber-950/20" : "border-emerald-800 bg-emerald-950/20"
+          }`}>
+            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-sm">Remediation Safety Monitor (RSM) Authorization</CardTitle>
+                <CardDescription>
+                  Autonomous backend safety governance enforcing statistical and schema invariants.
+                </CardDescription>
               </div>
+              <Badge variant={isBlocked ? "danger" : isWarn ? "warning" : "success"}>
+                RSM {rsmReport.status}
+              </Badge>
             </CardHeader>
-            <CardContent className="p-4">
-              {preview ? (
-                <div className="space-y-4">
-                  {/* Status Banner */}
-                  <div
-                    className={`rounded-xl border p-3.5 text-xs ${
-                      isBlock
-                        ? "border-status-block/60 bg-status-block/15 text-rose-300"
-                        : isWarn
-                        ? "border-status-warning/60 bg-status-warning/15 text-amber-300"
-                        : "border-status-success/60 bg-status-success/15 text-emerald-300"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      {isBlock ? (
-                        <XCircle className="h-5 w-5 text-status-block shrink-0 mt-0.5" />
-                      ) : isWarn ? (
-                        <AlertTriangle className="h-5 w-5 text-status-warning shrink-0 mt-0.5" />
-                      ) : (
-                        <CheckCircle2 className="h-5 w-5 text-status-success shrink-0 mt-0.5" />
-                      )}
-                      <div className="space-y-1">
-                        <strong className="block font-bold">
-                          {isBlock
-                            ? "OPERATION BLOCKED: Violates Non-Negotiable Safety Floor"
-                            : isWarn
-                            ? "SAFETY WARNING: High Class Attrition / Extensive Feature Ablation"
-                            : "OPERATION AUTHORIZED: All Safety Guardrails Passed"}
-                        </strong>
-                        <p className="text-[11px] opacity-90">{preview.reason}</p>
-
-                        {/* List Warnings / Blocks */}
-                        {rsmReport?.blocks.map((b, i) => (
-                          <p key={i} className="text-[11px] font-mono text-rose-300 font-semibold">
-                            &bull; [{b.code}] {b.message}
-                          </p>
-                        ))}
-                        {rsmReport?.warnings.map((w, i) => (
-                          <p key={i} className="text-[11px] font-mono text-amber-300 font-semibold">
-                            &bull; [{w.code}] {w.message}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Impact Summary */}
-                  <div className="grid grid-cols-3 gap-3 text-xs text-center font-mono">
-                    <div className="p-3 rounded-lg bg-bg-elevated border border-border">
-                      <span className="text-[10px] text-txt-muted block uppercase font-semibold">Affected Rows</span>
-                      <strong className="text-base text-txt-primary">
-                        {formatNumber(preview.affected.n_rows)}
-                      </strong>
-                    </div>
-                    <div className="p-3 rounded-lg bg-bg-elevated border border-border">
-                      <span className="text-[10px] text-txt-muted block uppercase font-semibold">Train Size Before</span>
-                      <strong className="text-base text-txt-secondary">
-                        {formatNumber(preview.expected_train_size.before)}
-                      </strong>
-                    </div>
-                    <div className="p-3 rounded-lg bg-bg-elevated border border-border">
-                      <span className="text-[10px] text-txt-muted block uppercase font-semibold">Train Size After</span>
-                      <strong className="text-base text-accent-secondary">
-                        {formatNumber(preview.expected_train_size.after)}
-                      </strong>
-                    </div>
-                  </div>
-
-                  {/* Warning Acknowledgement Checkbox */}
-                  {isWarn && (
-                    <label className="flex items-center gap-2 p-3 rounded-lg border border-status-warning/40 bg-status-warning/10 text-xs text-amber-300 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={warningAck}
-                        onChange={(e) => setWarningAck(e.target.checked)}
-                        className="rounded border-status-warning text-status-warning focus:ring-status-warning"
-                      />
-                      <span>
-                        I acknowledge the RSM warnings and confirm this counterfactual ablation is intentional.
-                      </span>
-                    </label>
-                  )}
-
-                  {/* Apply Button */}
-                  <Button
-                    variant={isBlock ? "danger" : "primary"}
-                    size="lg"
-                    className="w-full gap-2 text-xs font-bold"
-                    disabled={!canApply || applying}
-                    isLoading={applying}
-                    onClick={handleApplyRemediation}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    {isBlock
-                      ? "ACTION PROHIBITED BY RSM"
-                      : isWarn && !warningAck
-                      ? "ACKNOWLEDGEMENT REQUIRED TO PROCEED"
-                      : "APPLY REMEDIATION TO TRAINING VIEW"}
-                  </Button>
+            <CardContent className="p-4 space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                <div className="p-2.5 rounded bg-bg-card border border-border">
+                  <span className="text-[10px] text-txt-muted block uppercase">Action Type</span>
+                  <strong className="text-txt-primary">{preview.action}</strong>
                 </div>
-              ) : (
-                <div className="py-10 text-center text-xs text-txt-muted space-y-1">
-                  <p className="font-medium text-txt-primary">No Simulation Preview Generated</p>
-                  <p className="text-[11px]">Configure an intervention on the left and click "Generate What-If Preview" to execute RSM checks.</p>
+                <div className="p-2.5 rounded bg-bg-card border border-border">
+                  <span className="text-[10px] text-txt-muted block uppercase">Proposed View</span>
+                  <strong className="text-accent-secondary">view_0001</strong>
+                </div>
+                <div className="p-2.5 rounded bg-bg-card border border-border">
+                  <span className="text-[10px] text-txt-muted block uppercase">Rows Retained</span>
+                  <strong className="text-txt-primary">{preview.expected_train_size.toLocaleString()}</strong>
+                </div>
+                <div className="p-2.5 rounded bg-bg-card border border-border">
+                  <span className="text-[10px] text-txt-muted block uppercase">Violations</span>
+                  <strong className={isBlocked ? "text-status-block" : "text-status-success"}>
+                    {rsmReport.blocks.length} Blocks, {rsmReport.warnings.length} Warns
+                  </strong>
+                </div>
+              </div>
+
+              {isWarn && (
+                <div className="p-3 rounded-lg border border-amber-800/80 bg-amber-950/40 text-amber-200 text-xs space-y-2">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="h-4 w-4 text-amber-400" />
+                    Acknowledgement Required:
+                  </p>
+                  <label className="flex items-center gap-2 cursor-pointer font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={warningAck}
+                      onChange={(e) => setWarningAck(e.target.checked)}
+                      className="rounded border-amber-800 text-amber-500"
+                    />
+                    <span>I understand the statistical warning and authorize this remediation view for re-benchmarking.</span>
+                  </label>
                 </div>
               )}
             </CardContent>
           </Card>
+
+          {/* Action Footer */}
+          <div className="p-4 rounded-xl border border-border bg-bg-card flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={() => setCurrentStep("9_PREVIEW")}
+            >
+              Back to Preview
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              className="gap-2 font-bold"
+              disabled={isBlocked || (isWarn && !warningAck)}
+              isLoading={loading}
+              onClick={handleApplyRemediation}
+            >
+              APPLY APPROVED REMEDIATION <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Cryptographic Rollback & Lineage History */}
-      <Card>
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <RotateCcw className="h-4 w-4 text-accent-secondary" />
-            Cryptographic Training View Lineage & Rollback History
-          </CardTitle>
-          <CardDescription>
-            Deterministic view hash lineage. Rollbacks are verified against parent view fingerprints.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-4 space-y-4">
-          {viewsData && viewsData.views.length > 0 ? (
-            <>
-              {/* Visual Chain */}
-              <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-                {viewsData.views.map((v, i) => {
-                  const isCurrent = v.view_id === viewsData.active_view.view_id;
-                  return (
-                    <React.Fragment key={v.view_id}>
-                      <div
-                        className={`rounded-lg border px-3 py-1.5 ${
-                          isCurrent
-                            ? "border-accent-primary bg-accent-primary/20 text-white font-bold shadow-sm"
-                            : "border-border bg-bg-elevated text-txt-muted"
-                        }`}
-                      >
-                        {v.view_id} ({v.n_included} rows)
-                      </div>
-                      {i < viewsData.views.length - 1 && (
-                        <ArrowRight className="h-3 w-3 text-txt-muted" />
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
+      {/* ========================================================================= */}
+      {/* STEP 11 — APPLY APPROVED REMEDIATION (Lineage & Rollback)                  */}
+      {/* ========================================================================= */}
+      {currentStep === "11_APPLY" && viewsData && (
+        <div className="space-y-6">
+          <div className="p-4 rounded-xl border border-border bg-bg-card">
+            <h3 className="text-base font-bold text-txt-primary">Apply Approved Changes</h3>
+            <p className="text-xs text-txt-muted mt-1 leading-relaxed">
+              Remediation applied successfully. The training view has been updated while preserving raw source data, locked test identifiers, and cryptographic audit lineage.
+            </p>
+          </div>
 
-              {/* Change Log Table */}
-              {viewsData.change_log.length > 0 ? (
-                <div className="overflow-x-auto scrollbar-thin">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-border bg-bg-elevated/70 text-[11px] uppercase text-txt-muted">
-                        <th className="p-2.5">Log Entry</th>
-                        <th className="p-2.5">Action</th>
-                        <th className="p-2.5">Transition</th>
-                        <th className="p-2.5">RSM Status</th>
-                        <th className="p-2.5">Timestamp</th>
-                        <th className="p-2.5 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/40 font-mono text-xs">
-                      {viewsData.change_log.map((entry) => (
-                        <tr key={entry.entry_id} className="hover:bg-bg-elevated/40 transition-colors">
-                          <td className="p-2.5 text-txt-primary font-bold">{entry.entry_id}</td>
-                          <td className="p-2.5">
-                            <Badge variant="outline">{entry.action}: {entry.rule_name}</Badge>
-                          </td>
-                          <td className="p-2.5 text-txt-secondary">
-                            {entry.parent_view_id} &rarr; {entry.new_view_id}
-                          </td>
-                          <td className="p-2.5">
-                            <Badge variant={entry.rsm_status === "PASS" ? "success" : "warning"}>
-                              {entry.rsm_status}
-                            </Badge>
-                          </td>
-                          <td className="p-2.5 text-txt-muted">{entry.timestamp}</td>
-                          <td className="p-2.5 text-right">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="gap-1.5 text-xs py-1"
-                              isLoading={rollingBack && rollbackTarget === entry.entry_id}
-                              onClick={() => setRollbackTarget(entry.entry_id)}
-                            >
-                              <RotateCcw className="h-3 w-3" /> Rollback
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-xs text-txt-muted text-center py-4">
-                  Root baseline view active (view_0000). No historical interventions applied yet.
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-xs text-txt-muted text-center py-4">No view lineage recorded.</p>
-          )}
-        </CardContent>
-      </Card>
+          {/* Lineage Table */}
+          <Card>
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm">Cryptographic View Lineage & Rollback Ledger</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-bg-elevated/70 border-b border-border text-[11px] text-txt-muted uppercase font-bold">
+                  <tr>
+                    <th className="p-3">View ID</th>
+                    <th className="p-3">Parent View</th>
+                    <th className="p-3">Action Details</th>
+                    <th className="p-3">Excluded Features</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border font-mono">
+                  {viewsData.views.map((v) => (
+                    <tr key={v.view_id} className="hover:bg-bg-elevated/40">
+                      <td className="p-3 font-bold text-accent-secondary">{v.view_id}</td>
+                      <td className="p-3 text-txt-muted">{v.parent_view_id || "Root"}</td>
+                      <td className="p-3 text-txt-secondary font-sans">{v.view_id === "view_0000" ? "Original Benchmark" : "Ablated Features"}</td>
+                      <td className="p-3 text-txt-muted">{v.excluded_features?.join(", ") || "None"}</td>
+                      <td className="p-3 text-right">
+                        {v.view_id !== viewsData.active_view.view_id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs gap-1 py-0.5"
+                            onClick={() => handleRollback(v.view_id)}
+                          >
+                            <RotateCcw className="h-3 w-3" /> Rollback
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
 
-      {/* Rollback Confirmation Modal */}
-      <ConfirmationDialog
-        open={!!rollbackTarget}
-        onOpenChange={(open) => {
-          if (!open) setRollbackTarget(null);
-        }}
-        title="Confirm Remediation Rollback"
-        description="Are you sure you want to revert to the parent training view of this entry? All downstream modifications from this point will be reverted."
-        confirmLabel="Rollback View"
-        variant="warning"
-        isLoading={rollingBack}
-        onConfirm={executeRollback}
-      >
-        <div className="p-2.5 rounded bg-bg-elevated/60 border border-border font-mono text-xs text-txt-muted">
-          Target Log Entry: <strong className="text-txt-primary">{rollbackTarget}</strong>
+          {/* Action Footer */}
+          <div className="p-4 rounded-xl border border-border bg-bg-card flex items-center justify-between">
+            <span className="text-xs text-txt-muted">
+              Active View: <strong className="text-accent-secondary font-mono">{viewsData.active_view.view_id}</strong>
+            </span>
+            <Button
+              variant="primary"
+              size="md"
+              className="gap-2 font-bold"
+              onClick={() => {
+                setActiveStage("REPORTS");
+                navigate("/reports");
+              }}
+            >
+              RE-BENCHMARK MODEL <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-      </ConfirmationDialog>
+      )}
     </div>
   );
 };

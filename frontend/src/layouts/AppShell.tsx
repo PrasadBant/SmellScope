@@ -29,10 +29,11 @@ interface NavItem {
 
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { name: "Home", path: "/", icon: <LayoutDashboard className="h-4 w-4" /> },
-  { name: "New Audit", path: "/audit", icon: <Database className="h-4 w-4" /> },
+  { name: "Dataset", path: "/dataset", icon: <Database className="h-4 w-4" /> },
+  { name: "Audit", path: "/audit", icon: <Activity className="h-4 w-4" /> },
   { name: "Findings", path: "/findings", icon: <Microscope className="h-4 w-4" /> },
   { name: "Remediation", path: "/remediation", icon: <Sliders className="h-4 w-4" />, badge: "OPTIONAL" },
-  { name: "Reports", path: "/reports", icon: <FileCheck className="h-4 w-4" /> },
+  { name: "Verify & Report", path: "/reports", icon: <FileCheck className="h-4 w-4" /> },
 ];
 
 export const AppShell: React.FC = () => {
@@ -65,11 +66,20 @@ export const AppShell: React.FC = () => {
     if (itemPath === "/") {
       return p === "/" || p === "/home" || p === "/overview";
     }
+    if (itemPath === "/dataset") {
+      return p.startsWith("/dataset") || p.startsWith("/ingestion");
+    }
     if (itemPath === "/audit") {
-      return p === "/audit" || p === "/ingestion";
+      return p.startsWith("/audit");
     }
     if (itemPath === "/findings") {
-      return p === "/findings" || p === "/heatmap" || p === "/diagnostics" || p === "/matrix";
+      return p.startsWith("/findings") || p.startsWith("/heatmap") || p.startsWith("/diagnostics") || p.startsWith("/matrix");
+    }
+    if (itemPath === "/remediation") {
+      return p.startsWith("/remediation");
+    }
+    if (itemPath === "/reports") {
+      return p.startsWith("/reports") || p.startsWith("/export") || p.startsWith("/audit-log");
     }
     return p.startsWith(itemPath);
   };

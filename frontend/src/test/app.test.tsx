@@ -23,11 +23,12 @@ describe("SmellScope 2.1 Simplified Frontend Shell & Foundation", () => {
 
   it("renders primary 5-stage workflow navigation links", () => {
     render(<App />);
-    expect(screen.getByText("Home")).toBeInTheDocument();
-    expect(screen.getByText("New Audit")).toBeInTheDocument();
-    expect(screen.getByText("Findings")).toBeInTheDocument();
-    expect(screen.getByText("Remediation")).toBeInTheDocument();
-    expect(screen.getByText("Reports")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dataset" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Audit" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Findings" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Remediation/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Verify & Report" })).toBeInTheDocument();
   });
 
   it("formats scientific metrics accurately", () => {

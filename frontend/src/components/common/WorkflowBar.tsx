@@ -12,7 +12,7 @@ interface StageConfig {
 }
 
 const STAGES: StageConfig[] = [
-  { id: "DATASET", num: "01", label: "DATASET", path: "/audit" },
+  { id: "DATASET", num: "01", label: "DATASET", path: "/dataset" },
   { id: "AUDIT", num: "02", label: "AUDIT", path: "/audit" },
   { id: "FINDINGS", num: "03", label: "FINDINGS", path: "/findings" },
   { id: "REMEDIATION", num: "04", label: "REMEDIATION (OPT.)", path: "/remediation" },
@@ -22,37 +22,39 @@ const STAGES: StageConfig[] = [
 export const WorkflowBar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeStage, setActiveStage, activeRunId, latestRunResult } = useAuditContext();
+  const { activeStage, setActiveStage, activeRunId, latestRunResult, activeDatasetId } = useAuditContext();
 
   // Sync active stage with pathname
   useEffect(() => {
     const p = location.pathname;
     if (p === "/" || p === "/overview" || p === "/home") {
       setActiveStage("HOME");
-    } else if (p.startsWith("/audit") || p.startsWith("/ingestion")) {
-      setActiveStage(activeRunId ? "AUDIT" : "DATASET");
-    } else if (p.startsWith("/findings") || p.startsWith("/heatmap") || p.startsWith("/diagnostics")) {
+    } else if (p.startsWith("/dataset") || p.startsWith("/ingestion")) {
+      setActiveStage("DATASET");
+    } else if (p.startsWith("/audit")) {
+      setActiveStage("AUDIT");
+    } else if (p.startsWith("/findings") || p.startsWith("/heatmap") || p.startsWith("/diagnostics") || p.startsWith("/matrix")) {
       setActiveStage("FINDINGS");
     } else if (p.startsWith("/remediation")) {
       setActiveStage("REMEDIATION");
-    } else if (p.startsWith("/reports")) {
+    } else if (p.startsWith("/reports") || p.startsWith("/export") || p.startsWith("/audit-log")) {
       setActiveStage("REPORTS");
     }
-  }, [location.pathname, activeRunId]);
+  }, [location.pathname]);
 
   const isStageActive = (st: StageConfig) => {
     const p = location.pathname;
-    if (st.id === "DATASET" && (p === "/audit" || p === "/ingestion") && !activeRunId) return true;
-    if (st.id === "AUDIT" && (p === "/audit" || p === "/ingestion") && activeRunId) return true;
-    if (st.id === "FINDINGS" && (p === "/findings" || p === "/heatmap" || p === "/diagnostics")) return true;
-    if (st.id === "REMEDIATION" && p === "/remediation") return true;
-    if (st.id === "REPORTS" && p === "/reports") return true;
+    if (st.id === "DATASET" && (p.startsWith("/dataset") || p.startsWith("/ingestion"))) return true;
+    if (st.id === "AUDIT" && p.startsWith("/audit")) return true;
+    if (st.id === "FINDINGS" && (p.startsWith("/findings") || p.startsWith("/heatmap") || p.startsWith("/diagnostics") || p.startsWith("/matrix"))) return true;
+    if (st.id === "REMEDIATION" && p.startsWith("/remediation")) return true;
+    if (st.id === "REPORTS" && (p.startsWith("/reports") || p.startsWith("/export") || p.startsWith("/audit-log"))) return true;
     return false;
   };
 
   const isStageCompleted = (stageId: WorkflowStage) => {
-    if (stageId === "DATASET") return true; // dataset available
-    if (stageId === "AUDIT" && activeRunId) return true;
+    if (stageId === "DATASET" && activeDatasetId) return true;
+    if (stageId === "AUDIT" && latestRunResult) return true;
     if (stageId === "FINDINGS" && latestRunResult) return true;
     return false;
   };
@@ -98,10 +100,9 @@ export const WorkflowBar: React.FC = () => {
               )}
               <span>{st.label}</span>
             </button>
+
             {idx < STAGES.length - 1 && (
-              <span className="text-border px-0.5">
-                <ArrowRight className="h-2.5 w-2.5 text-txt-muted/40" />
-              </span>
+              <ArrowRight className="h-3 w-3 text-border shrink-0 opacity-60" />
             )}
           </React.Fragment>
         );

@@ -100,8 +100,8 @@ export const HomeScreen: React.FC = () => {
               variant="primary"
               size="lg"
               onClick={() => {
-                setActiveStage("AUDIT");
-                navigate("/audit");
+                setActiveStage("DATASET");
+                navigate("/dataset");
               }}
               className="gap-2 font-bold"
             >
@@ -135,8 +135,8 @@ export const HomeScreen: React.FC = () => {
         <Card
           className="hover:border-accent-primary/50 transition-all cursor-pointer group p-1"
           onClick={() => {
-            setActiveStage("AUDIT");
-            navigate("/audit");
+            setActiveStage("DATASET");
+            navigate("/dataset");
           }}
         >
           <CardContent className="p-5 space-y-2">

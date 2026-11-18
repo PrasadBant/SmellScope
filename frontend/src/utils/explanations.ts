@@ -1,3 +1,5 @@
+export type HeuristicKey = "UGT" | "WL" | "HDF" | "PDD" | "TC";
+
 export interface MetricExplanation {
   shortName: string;
   fullName: string;
