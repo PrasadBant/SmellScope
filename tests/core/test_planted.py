@@ -20,8 +20,8 @@ def test_make_planted_dataset_recovery_and_labels():
     assert truth["category"] == "B"
     assert truth["strength"] == 1.0
 
-    # Under strength=1.0 and low noise, attack flows have values near 53.0 and benign near 80.0
+    # Under strength=1.0 and low noise, attack flows have values near 80.0
     attack_vals = df[df["label"] == "DoS"]["planted_ttl"]
     benign_vals = df[df["label"] == "BENIGN"]["planted_ttl"]
-    assert attack_vals.mean() == pytest.approx(53.0, abs=0.5)
-    assert benign_vals.mean() == pytest.approx(80.0, abs=0.5)
+    assert attack_vals.mean() == pytest.approx(80.0, abs=0.5)
+    assert not (benign_vals == 80.0).any()

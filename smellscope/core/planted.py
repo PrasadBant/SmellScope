@@ -65,23 +65,23 @@ def make_planted_dataset(
     n_rows = len(base_df)
     is_class_c = (base_df[label_col] == cls).to_numpy()
 
-    # Generate shortcut feature based on strength
-    # When strength = 1.0, perfectly distinct values between class C and benign
+    # Generate shortcut feature with realistic background distribution
+    # Attack uses target port (e.g. 80) or fingerprint value
+    # Benign spans surrounding background ports (e.g. 21, 22, 53, 443, 8080)
     planted_vals = np.zeros(n_rows, dtype=float)
+    benign_port_pool = [21, 22, 53, 443, 8080, 8443]
 
-    # Benign baseline value = 80.0, attack value = 53.0 (Category A style)
-    # Or continuous 0.0 vs 10.0
     for i in range(n_rows):
         if is_class_c[i]:
             if rng.random() < strength:
-                val = 53.0
-            else:
                 val = 80.0
+            else:
+                val = float(rng.choice(benign_port_pool))
         else:
-            if rng.random() < strength:
+            if rng.random() < (1.0 - strength):
                 val = 80.0
             else:
-                val = 53.0
+                val = float(rng.choice(benign_port_pool))
         planted_vals[i] = val + rng.normal(0.0, noise_std)
 
     base_df[feat_name] = planted_vals

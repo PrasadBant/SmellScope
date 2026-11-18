@@ -191,7 +191,14 @@ def compute_sfi(
 
     # Step 7: Suspicion Flag Evaluation
     cond_hdf_high = (hdf_score is not None and hdf_score >= hdf_high_threshold)
-    cond_excess_fragility = (delta_sfi > 0.0 and z_score is not None and z_score >= z_threshold)
+    # Excess fragility: either z >= z_threshold, or if null distribution has zero variance (std=0) and delta_sfi > 0
+    cond_excess_fragility = (
+        delta_sfi > 0.0
+        and (
+            (z_score is not None and z_score >= z_threshold)
+            or (sfi_null_std < 1e-9 and delta_sfi > 0.05)
+        )
+    )
 
     # Category eligibility
     has_cat_ab = any(c in ["A", "B"] for c in categories)
