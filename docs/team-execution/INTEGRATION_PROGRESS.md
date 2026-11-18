@@ -3,22 +3,22 @@
 <!-- MEMBER-1-START -->
 ### Member 1: Research Core (heuristics, SFI, GGI, evaluation)
 - **Branch:** `feature/member-1-core-engine`
-- **Current Phase:** Phase 1 Completed, Phase 2 Pending Approval
+- **Current Phase:** Phase 2 Completed, Phase 3 Pending Approval
 - **Status:** GREEN (On track)
-- **Cumulative Hours:** 0.8 / 6.5 h
+- **Cumulative Hours:** 1.5 / 6.5 h
 - **Completed Phases:** 
   - Phase 0: Context and Repository Audit (0.3 h)
   - Phase 1: Requirements and Specifications (0.5 h)
+  - Phase 2: Architecture and Technical Contracts (0.7 h)
 - **Deliverables Completed:**
-  - `config/heuristics.yaml`
-  - `docs/research/PREREGISTRATION.md`
-  - `docs/team-execution/member-1/PRD.md`
-  - `docs/team-execution/member-1/FRD.md`
-  - `docs/team-execution/member-1/NFR.md`
-  - `docs/team-execution/member-1/TRACEABILITY.md`
+  - `docs/contracts/SHARED_CONTRACT_v1.0.md` (Verbatim frozen contract)
+  - `docs/research/TECHNICAL_DESIGN.md`
+  - `smellscope/core/` package stubs with verified contract signatures
+  - `tests/fixtures/core/split_stub.py`
+  - `tests/core/test_contract.py` (3/3 passed)
   - `docs/team-execution/member-1/PHASE_PROGRESS.md`
-- **Current Dependencies / Mocks:** `split_stub.py` planned for Phase 2.
-- **Contract Adherence:** Pre-registered parameters aligned with Shared Contract v1.0.
+- **Current Dependencies / Mocks:** `split_stub.py` active for local Phase 3 unit testing.
+- **Contract Adherence:** Verified via automated signature reflection and error code tests.
 <!-- MEMBER-1-END -->
 
 <!-- MEMBER-2-START -->
