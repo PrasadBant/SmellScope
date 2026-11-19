@@ -12,13 +12,13 @@ describe("SmellScope 2.1 Simplified Frontend Shell & Foundation", () => {
     expect(screen.getByText(/Scientific Auditor · NIDS Benchmark Trust/i)).toBeInTheDocument();
   });
 
-  it("renders 5-stage scientific workflow stepper", () => {
+  it("renders 6-stage scientific workflow stepper (dataset -> audit -> findings -> improvement -> comparison -> reports)", () => {
     render(<App />);
-    expect(screen.getByText("DATASET")).toBeInTheDocument();
-    expect(screen.getByText("AUDIT")).toBeInTheDocument();
-    expect(screen.getByText("FINDINGS")).toBeInTheDocument();
-    expect(screen.getByText("REMEDIATION (OPT.)")).toBeInTheDocument();
-    expect(screen.getByText("VERIFY & REPORT")).toBeInTheDocument();
+    for (const label of ["DATASET", "AUDIT", "FINDINGS", "IMPROVEMENT", "COMPARISON", "REPORTS"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    // The old optional-remediation stage is no longer part of the stepper.
+    expect(screen.queryByText("REMEDIATION (OPT.)")).not.toBeInTheDocument();
   });
 
   it("renders primary 5-stage workflow navigation links", () => {

@@ -10,6 +10,17 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('plotly')) return 'plotly';
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('react-router')) return 'react-vendor';
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

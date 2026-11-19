@@ -1093,24 +1093,26 @@ def get_dataset_comparison(
     # (and the "before" side matches the authoritative /scores endpoint). Without a re-audit of
     # the corrected view the audit-dependent dimensions carry reduced evidence coverage instead
     # of silently reusing the original data's audit.
+    orig_score_df = train_view_dataframe(ds, split, original_view)
+    rem_score_df = train_view_dataframe(ds, split, remediated_view)
     before_scores = compute_overall_dataset_assessment(
-        df=orig_df,
+        df=orig_score_df,
         label_col=label_col,
         benign_label=ds.get("benign_label", "BENIGN"),
         audit_result=original_audit,
         split=split,
-        roles=ds.get("column_roles"),
+        roles=roles_for_frame(ds, orig_score_df),
         cfg=cfg,
     )
 
     same_view = original_view["view_id"] == remediated_view["view_id"]
     after_scores = compute_overall_dataset_assessment(
-        df=rem_df,
+        df=rem_score_df,
         label_col=label_col,
         benign_label=ds.get("benign_label", "BENIGN"),
         audit_result=(original_audit if same_view else reaudit),
         split=split,
-        roles=ds.get("column_roles"),
+        roles=roles_for_frame(ds, rem_score_df),
         cfg=cfg,
     )
 
@@ -1369,6 +1371,21 @@ def build_view_dataframe(ds: Dict[str, Any], split: Dict[str, Any], view: Dict[s
                     [-np.inf], float(finite.quantile(0.01))
                 )
     return out.drop(columns=[c for c in view.get("excluded_features", []) if c in out.columns])
+
+
+def train_view_dataframe(ds: Dict[str, Any], split: Dict[str, Any], view: Dict[str, Any]) -> pd.DataFrame:
+    """Training rows of a view with imputation/capping applied and excluded features dropped.
+
+    This is the single definition of "the data a view trains on"; scoring, comparison and
+    re-audit all use it so their numbers describe exactly the same data.
+    """
+    full = build_view_dataframe(ds, split, view)
+    return full[full["__row_id"].isin(set(view["_included_row_ids"]))].copy()
+
+
+def roles_for_frame(ds: Dict[str, Any], frame: pd.DataFrame) -> Dict[str, Any]:
+    """Column roles restricted to columns that still exist in ``frame``."""
+    return {k: (v if (v is None or v in frame.columns) else None) for k, v in (ds.get("column_roles") or {}).items()}
 
 
 def reaudit_view(

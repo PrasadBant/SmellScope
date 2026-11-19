@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import {
   ShieldAlert,
@@ -306,7 +306,12 @@ export const AppShell: React.FC = () => {
 
         {/* Content Body */}
         <main className="flex-1 overflow-y-auto p-6 scrollbar-thin">
-          <Outlet />
+          <Suspense
+            key={location.pathname}
+            fallback={<div className="p-6 text-sm text-txt-muted" role="status">Loading…</div>}
+          >
+            <Outlet />
+          </Suspense>
         </main>
 
         {/* Scientific Disclaimer Footer Banner */}

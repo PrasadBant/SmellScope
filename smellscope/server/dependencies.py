@@ -31,6 +31,8 @@ from smellscope.remediation.manager import (
     apply_repair_plan,
     get_dataset_comparison,
     reaudit_view,
+    train_view_dataframe,
+    roles_for_frame,
 )
 from smellscope.core.errors import E_CONFIG, E_FILE, SmellScopeError
 
@@ -525,7 +527,7 @@ class RemediationSessionManager:
             ds, split = self._ensure_initialized(run_id)
             job = self._job_manager.get_job(run_id)
             active_view = self._views[run_id][-1]
-            train_subset = ds["df"][ds["df"]["__row_id"].isin(active_view["_included_row_ids"])]
+            train_subset = train_view_dataframe(ds, split, active_view)
             # Score the active view with the audit that actually describes it: the original run for
             # the untouched view, a real re-audit for any corrected view.
             audit = self._get_reaudit(run_id, ds, split, active_view) or (job.result if job else None)
@@ -536,7 +538,7 @@ class RemediationSessionManager:
                 benign_label=ds.get("benign_label", "BENIGN"),
                 audit_result=audit,
                 split=split,
-                roles=ds.get("column_roles"),
+                roles=roles_for_frame(ds, train_subset),
             )
 
     def get_export_metadata(self, run_id: str) -> Optional[Dict[str, Any]]:

@@ -8,7 +8,7 @@
 [![React](https://img.shields.io/badge/React-18.3-61DAFB)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6)]()
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38BDF8)]()
-[![Tests](https://img.shields.io/badge/tests-49%20passed%20%7C%200%20failed-success)]()
+[![Tests](https://img.shields.io/badge/tests-backend%20%2B%20frontend-success)]()
 
 > [!IMPORTANT]
 > **SCIENTIFIC INTEGRITY NOTICE:**  
@@ -38,34 +38,42 @@ SmellScope 2.1 transforms the dataset auditing experience into an intuitive, beg
 ## 2. Quick Start
 
 ### Prerequisites
-- Python 3.10+ (tested through 3.13)
-- Node.js 18+ & npm
+- Python 3.11+ (tested on 3.13) and Node.js 18+ with npm
+- Windows PowerShell (primary), or any shell for the manual commands below
 
-### One-Click Launch (Windows)
+### First-time setup (Windows PowerShell)
 ```powershell
-.\launch.bat
+.\scripts\setup.ps1            # checks prerequisites, installs backend + frontend deps, creates .env, runs health check
+.\scripts\setup.ps1 -UseVenv   # same, but inside a local .venv
 ```
 
-### Manual Launch
-
-**1. Install Python package:**
-```bash
-pip install -e .
+### Start the application
+```powershell
+.\scripts\start.ps1            # development: FastAPI (8000, auto-reload) + Vite (5173) -> open http://localhost:5173
+.\scripts\start.ps1 -Prod      # single process: builds the frontend if needed and serves everything on http://127.0.0.1:8000
+.\scripts\start.ps1 -Check     # dry run: verifies dependencies and that the ports are free, starts nothing
 ```
+`start.ps1` loads `.env`, refuses to start if a port is busy, waits for `/api/v1/health`, and stops both servers on Ctrl+C.
+Shell equivalents: `scripts/run_dev.sh` and `scripts/run_prod.sh`.
 
-**2. Build React frontend bundle:**
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
+### Health check
+```powershell
+.\scripts\check.ps1            # config, storage, ML dependencies, research engine
+.\scripts\check.ps1 -Live      # additionally probes the running backend and frontend
 ```
+The same checks are exposed at `GET /api/v1/health` (status is `ok` or `degraded`, with per-check detail).
 
-**3. Start the unified application:**
+### Manual commands
 ```bash
+pip install -r requirements.txt && pip install -e .
+cd frontend && npm ci && npm run build && cd ..
 python -m uvicorn smellscope.server.main:app --host 127.0.0.1 --port 8000
 ```
-Open **[http://127.0.0.1:8000](http://127.0.0.1:8000)** in your browser.
+
+### Configuration (`.env`)
+Copy `.env.example` to `.env` (done by `setup.ps1`). Variables: `SMELLSCOPE_HOME` (audit runs), `SMELLSCOPE_DATA_DIR`
+(samples/uploads/repaired/models), `SMELLSCOPE_CONFIG_DIR` (YAML, canonical `./config`), `SMELLSCOPE_HOST`,
+`SMELLSCOPE_PORT`, `SMELLSCOPE_FRONTEND_PORT`, `LOKY_MAX_CPU_COUNT`. No API keys or external services are used.
 
 ---
 
@@ -128,25 +136,46 @@ badsmellpart1/
 
 ## 5. Verification & Quality Assurance
 
-SmellScope maintains 100% test pass rates across all test suites:
-
 ```bash
-# 1. Python Scientific & Server Tests (37 tests)
-python -m pytest tests -v
-
-# 2. Frontend Component & Shell Tests (10 tests)
-npm --prefix frontend run test -- --run
-
-# 3. Playwright End-to-End Browser Tests (2 suites)
-cd frontend; npx playwright test
-
-# 4. Standalone Research Demo
-python examples/run_demo.py
+python -m pytest tests -q                  # backend: scientific core, scoring, API boundary, workflow integrity, dynamic datasets
+cd frontend && npm run typecheck           # TypeScript
+cd frontend && npm test                    # Vitest component/shell tests
+cd frontend && npm run build               # production bundle (code-split; Plotly loads on demand)
+cd frontend && npx playwright test         # browser end-to-end (requires the app to be running)
+python examples/run_demo.py                # standalone research demo
 ```
+
+Key workflow guarantees covered by `tests/server/test_workflow_integrity.py` and `tests/server/test_dynamic_datasets.py`:
+selected recommendations carry their parameters; the server (not the client) decides what a repair does; a no-op repair
+reports `NO_CHANGE` and creates no new version; the corrected view is genuinely re-audited on the same locked split; the
+dashboard score equals the comparison "after" score; the locked test fingerprint is verified, not assumed; single-class
+datasets are `NOT_APPLICABLE` for supervised analysis.
 
 ---
 
-## 6. Scientific References
+## 6. Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `start.ps1` says a port is in use | Stop the other process or change `SMELLSCOPE_PORT` / `SMELLSCOPE_FRONTEND_PORT` in `.env` |
+| UI shows "Unable to connect to the SmellScope backend" | Start the backend (`.\scripts\start.ps1`), then use the retry button; verify with `.\scripts\check.ps1 -Live` |
+| Health status `degraded` | `python scripts/check_health.py` prints which check failed (storage permissions, missing ML package, config) |
+| joblib/loky "physical cores" warning on Windows 11 | Harmless; `LOKY_MAX_CPU_COUNT` in `.env` silences it |
+| First comparison after a repair takes ~10-20 s | A real re-audit of the corrected view runs once and is cached by view hash |
+| Frontend changes not visible in `-Prod` mode | `.\scripts\start.ps1 -Prod -Rebuild` |
+
+## 7. Current Limitations
+
+- State for repair previews, views and comparisons is held in server memory; restarting the backend resets the Improvement
+  Centre session (audit results in `runs/` and saved models in `data/models/` persist).
+- Unknown schemas are audited with generic diagnostics; there is no interactive column-mapping step yet, and unmapped features are not given semantics.
+- Results come from one seeded split; comparisons are measurements on that split, not proof of general improvement.
+- Corrected-dataset exports are a single CSV (train view + untouched validation/test rows), not separate partition files.
+- Audit duration is dominated by SFI null calibration (about 10-20 s for a few hundred rows per class).
+
+---
+
+## 8. Scientific References
 
 - Flood, M., et al. (2024). *Shortcut Learning and Protocol Leakage in Network Intrusion Detection Benchmarks*. IEEE EuroS&P.
 - Sharafaldin, I., et al. (2018). *Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization*. ICISSP.
