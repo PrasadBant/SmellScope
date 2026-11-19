@@ -272,6 +272,28 @@ export const DatasetScreen: React.FC = () => {
               <p className="leading-relaxed font-mono mt-0.5">{errorMsg}</p>
             </div>
 
+            {/* Retry button for loading / network errors */}
+            {errorCategory === "LOAD_ERROR" && (
+              <div className="pt-2 flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7 gap-1.5 bg-bg-card border-border text-txt-primary hover:bg-bg-elevated"
+                  onClick={() => {
+                    setErrorMsg(null);
+                    setErrorCategory(null);
+                    loadDatasetsList();
+                    if (selectedId) {
+                      loadDatasetDetails(selectedId);
+                    }
+                  }}
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Retry Connection
+                </Button>
+              </div>
+            )}
+
             {/* Specialized educational guidance when single-class dataset is detected */}
             {errorMsg.includes("at least 2 distinct classes") && (
               <div className="pt-2 border-t border-amber-700/50 space-y-2 text-xs text-amber-200/90 font-sans">

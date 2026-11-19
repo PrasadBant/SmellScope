@@ -27,13 +27,23 @@ const BASE_URL =
     : "http://127.0.0.1:8000/api/v1";
 
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers || {}),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options?.headers || {}),
+      },
+    });
+  } catch (err: any) {
+    if (err?.message === "Failed to fetch" || err?.name === "TypeError") {
+      throw new Error(
+        "Unable to connect to the SmellScope backend server (http://127.0.0.1:8000). Please ensure the backend service is running."
+      );
+    }
+    throw err;
+  }
 
   if (!res.ok) {
     let errorDetail = "API Error";
@@ -77,10 +87,20 @@ export const api = {
     if (label_col) formData.append("label_col", label_col);
     if (benign_label) formData.append("benign_label", benign_label);
 
-    const res = await fetch(`${BASE_URL}/datasets/upload`, {
-      method: "POST",
-      body: formData,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${BASE_URL}/datasets/upload`, {
+        method: "POST",
+        body: formData,
+      });
+    } catch (err: any) {
+      if (err?.message === "Failed to fetch" || err?.name === "TypeError") {
+        throw new Error(
+          "Unable to connect to the SmellScope backend server (http://127.0.0.1:8000). Please ensure the backend service is running."
+        );
+      }
+      throw err;
+    }
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || "Upload failed");
