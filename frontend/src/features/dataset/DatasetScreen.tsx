@@ -260,15 +260,69 @@ export const DatasetScreen: React.FC = () => {
               errorCategory === "PARAM_ERROR" ? "text-amber-400" : "text-rose-400"
             }`}
           />
-          <div className="space-y-1">
-            <p className="font-bold">
-              {errorCategory === "PARAM_ERROR"
-                ? "Validation Parameter Notice"
-                : errorCategory === "LOAD_ERROR"
-                ? "Dataset Loading Notice"
-                : "Validation Check Notice"}
-            </p>
-            <p className="leading-relaxed">{errorMsg}</p>
+          <div className="space-y-2 flex-1">
+            <div>
+              <p className="font-bold text-sm">
+                {errorCategory === "PARAM_ERROR"
+                  ? "Validation Parameter Notice"
+                  : errorCategory === "LOAD_ERROR"
+                  ? "Dataset Loading Notice"
+                  : "Validation Check Notice"}
+              </p>
+              <p className="leading-relaxed font-mono mt-0.5">{errorMsg}</p>
+            </div>
+
+            {/* Specialized educational guidance when single-class dataset is detected */}
+            {errorMsg.includes("at least 2 distinct classes") && (
+              <div className="pt-2 border-t border-amber-700/50 space-y-2 text-xs text-amber-200/90 font-sans">
+                <div className="p-2.5 rounded-lg bg-amber-900/30 border border-amber-600/40 space-y-1">
+                  <p className="font-semibold text-amber-100">
+                    Why does SmellScope require at least 2 distinct classes?
+                  </p>
+                  <p className="leading-relaxed text-[11px] text-amber-200/80">
+                    SmellScope is an intrusion detection benchmark auditor. Auditing dataset smells, decision boundaries, classification accuracy, False Positive Rates, and shortcut heuristics (UGT, SFI, GGI) requires both a benign baseline class and at least one target attack class.
+                  </p>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-bg-card/60 border border-border space-y-1 text-txt-secondary text-[11px]">
+                  <p className="font-semibold text-txt-primary">
+                    Notice for CIC-IDS-2017 (<code className="font-mono text-accent-secondary">monday.csv</code>):
+                  </p>
+                  <p className="leading-relaxed">
+                    In the CIC-IDS-2017 benchmark suite, Monday was captured as the <strong>benign baseline day only</strong> (all 371,624 flows are labeled <code className="font-mono text-txt-primary">BENIGN</code>, with 0 attacks). Attacks were introduced on other days:
+                  </p>
+                  <ul className="list-disc list-inside space-y-0.5 text-txt-muted ml-1 font-mono text-[10px]">
+                    <li><strong className="text-txt-primary">friday.csv:</strong> PortScan, DDoS, Botnet</li>
+                    <li><strong className="text-txt-primary">wednesday.csv:</strong> DoS (Slowloris, GoldenEye, Hulk), Heartbleed</li>
+                    <li><strong className="text-txt-primary">tuesday.csv:</strong> FTP-Patator, SSH-Patator</li>
+                    <li><strong className="text-txt-primary">cic2017_sample_planted:</strong> Pre-loaded balanced sample with PortScan & Benign</li>
+                  </ul>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="text-xs h-7 gap-1.5 font-bold"
+                    onClick={() => {
+                      setSelectedId("cic2017_sample_planted");
+                      setActiveDatasetId("cic2017_sample_planted");
+                      setCurrentStep("1_UPLOAD");
+                    }}
+                  >
+                    Select Pre-Loaded Benchmark Sample (CIC-IDS-2017)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7 gap-1.5 bg-bg-card border-border text-txt-primary hover:bg-bg-elevated"
+                    onClick={() => setCurrentStep("1_UPLOAD")}
+                  >
+                    Upload Another Capture Day
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -690,8 +744,11 @@ export const DatasetScreen: React.FC = () => {
                       )}
                     </td>
                     <td className="p-3 text-txt-secondary">
-                      {datasetValidation?.unique_classes.length || 0} distinct classes detected:{" "}
-                      {datasetValidation?.unique_classes.join(", ")}
+                      {(datasetValidation?.unique_classes.length || 0) >= 2 ? (
+                        `${datasetValidation?.unique_classes.length} distinct classes detected: ${datasetValidation?.unique_classes.join(", ")}`
+                      ) : (
+                        `Only ${datasetValidation?.unique_classes.length || 1} class detected (${datasetValidation?.unique_classes.join(", ") || benignLabel}). NIDS benchmarking requires both a benign baseline and at least one attack class to evaluate classifier decision boundaries.`
+                      )}
                     </td>
                   </tr>
 
