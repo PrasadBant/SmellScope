@@ -3,6 +3,7 @@
 from smellscope.pipeline.config import load_config
 from smellscope.pipeline.loader import load_dataset
 from smellscope.pipeline.orchestrator import run_audit
+from smellscope.pipeline.profile import compute_dataset_profile
 from smellscope.pipeline.split import assert_test_untouched, make_locked_split
 
 __all__ = [
@@ -11,4 +12,5 @@ __all__ = [
     "make_locked_split",
     "assert_test_untouched",
     "run_audit",
+    "compute_dataset_profile",
 ]

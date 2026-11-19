@@ -18,6 +18,7 @@ import sklearn
 from smellscope.core.audit import audit_class
 from smellscope.core.errors import SmellScopeError
 from smellscope.pipeline.config import load_config
+from smellscope.pipeline.profile import compute_dataset_profile
 from smellscope.pipeline.split import make_locked_split
 
 
@@ -75,7 +76,60 @@ def run_audit(
     evidence_label = "synthetic" if schema_id == "synthetic-planted" else "measured"
 
     # Make locked split
+    split_start = time.time()
     split = make_locked_split(ds, cfg)
+    split_duration_ms = round((time.time() - split_start) * 1000.0, 2)
+
+    # Compute authoritative profile and dynamic capability matrix
+    profile_start = time.time()
+    dataset_profile = compute_dataset_profile(ds, split=split, dataset_id=run_id)
+    profile_duration_ms = round((time.time() - profile_start) * 1000.0, 2)
+
+    if run_id is None:
+        run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+
+    audit_logs: List[Dict[str, Any]] = [
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "stage": "INGESTION",
+            "level": "INFO",
+            "operation": "Dataset Ingestion & Integrity Scan",
+            "duration_ms": 0.0,
+            "details": {
+                "rows": len(df),
+                "columns": len(df.columns),
+                "label_col": label_col,
+                "benign_label": benign_label,
+            },
+        },
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "stage": "VALIDATION",
+            "level": "INFO",
+            "operation": "Schema and Topology Validation",
+            "duration_ms": profile_duration_ms,
+            "details": {
+                "schema_id": schema_id,
+                "is_single_class": dataset_profile["is_single_class"],
+                "classes_detected": dataset_profile["available_classes"],
+                "supported_diagnostics_count": len(dataset_profile["supported_diagnostics"]),
+            },
+        },
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "stage": "SPLIT",
+            "level": "INFO",
+            "operation": "Locked 3-Way Partition Generator",
+            "duration_ms": split_duration_ms,
+            "details": {
+                "seed": split["seed"],
+                "split_hash": split["split_hash"],
+                "train_rows": len(split["train_ids"]),
+                "val_rows": len(split["val_ids"]),
+                "test_rows": len(split["test_ids"]),
+            },
+        },
+    ]
 
     # Determine classes to audit
     all_classes = sorted([str(c) for c in df[label_col].unique() if str(c) != benign_label])
@@ -90,40 +144,97 @@ def run_audit(
     degradations: List[str] = []
     per_class_seconds: Dict[str, float] = {}
 
-    if run_id is None:
-        run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    if dataset_profile["is_single_class"]:
+        audit_logs.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "stage": "CLASS_AUDIT",
+            "level": "INFO",
+            "operation": "Single-Class Dataset Diagnostics Mode",
+            "duration_ms": 1.0,
+            "details": {
+                "message": (
+                    f"Dataset contains only single class '{dataset_profile['available_classes'][0]}'. "
+                    "Data Quality ($S_DQ$) profiling is available. Supervised ML benchmark, SFI, GGI, and "
+                    "attack-specific heuristics are marked NOT_APPLICABLE because no attack traffic is present."
+                ),
+            },
+        })
+    else:
+        for idx, cls_name in enumerate(target_classes):
+            if progress_cb:
+                progress_cb(idx + 1, total_classes, cls_name)
 
-    for idx, cls_name in enumerate(target_classes):
-        if progress_cb:
-            progress_cb(idx + 1, total_classes, cls_name)
+            cls_start = time.time()
+            try:
+                res = audit_class(
+                    df=df,
+                    label_col=label_col,
+                    cls=cls_name,
+                    benign_label=benign_label,
+                    cfg=cfg,
+                    split=split,
+                )
+                class_results.append(res)
+                cls_duration_ms = round((time.time() - cls_start) * 1000.0, 2)
+                audit_logs.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "stage": "CLASS_AUDIT",
+                    "level": "INFO",
+                    "operation": f"Audit of class '{cls_name}' vs '{benign_label}'",
+                    "duration_ms": cls_duration_ms,
+                    "details": {
+                        "class": cls_name,
+                        "n_samples": res.get("n", 0),
+                        "ugt": res.get("paper", {}).get("UGT"),
+                        "wl": res.get("paper", {}).get("WL"),
+                        "hdf": res.get("paper", {}).get("HDF"),
+                        "sfi_flag": res.get("sfi", {}).get("flag", False),
+                    },
+                })
+            except SmellScopeError as sse:
+                errors.append(sse.to_dict())
+                degradations.append(f"Audit of class '{cls_name}' failed with {sse.code}: {sse.message}")
+                audit_logs.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "stage": "CLASS_AUDIT",
+                    "level": "WARN",
+                    "operation": f"Audit of class '{cls_name}' encountered known error",
+                    "duration_ms": round((time.time() - cls_start) * 1000.0, 2),
+                    "details": {"error_code": sse.code, "message": sse.message},
+                })
+            except Exception as exc:
+                err_dict = {
+                    "code": "E_INTERNAL",
+                    "message": f"Unexpected error auditing class '{cls_name}': {exc}",
+                    "class": cls_name,
+                    "details": {"error": str(exc)},
+                }
+                errors.append(err_dict)
+                degradations.append(f"Audit of class '{cls_name}' failed unexpectedly: {exc}")
+                audit_logs.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "stage": "CLASS_AUDIT",
+                    "level": "ERROR",
+                    "operation": f"Audit of class '{cls_name}' crashed",
+                    "duration_ms": round((time.time() - cls_start) * 1000.0, 2),
+                    "details": {"error": str(exc)},
+                })
 
-        cls_start = time.time()
-        try:
-            res = audit_class(
-                df=df,
-                label_col=label_col,
-                cls=cls_name,
-                benign_label=benign_label,
-                cfg=cfg,
-                split=split,
-            )
-            class_results.append(res)
-        except SmellScopeError as sse:
-            errors.append(sse.to_dict())
-            degradations.append(f"Audit of class '{cls_name}' failed with {sse.code}: {sse.message}")
-        except Exception as exc:
-            err_dict = {
-                "code": "E_INTERNAL",
-                "message": f"Unexpected error auditing class '{cls_name}': {exc}",
-                "class": cls_name,
-                "details": {"error": str(exc)},
-            }
-            errors.append(err_dict)
-            degradations.append(f"Audit of class '{cls_name}' failed unexpectedly: {exc}")
-
-        per_class_seconds[cls_name] = round(time.time() - cls_start, 3)
+            per_class_seconds[cls_name] = round(time.time() - cls_start, 3)
 
     total_seconds = round(time.time() - start_time, 3)
+    audit_logs.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "stage": "COMPLETION",
+        "level": "INFO",
+        "operation": "Audit Pipeline Execution Completed",
+        "duration_ms": round(total_seconds * 1000.0, 2),
+        "details": {
+            "total_classes_audited": len(class_results),
+            "errors_count": len(errors),
+            "total_runtime_seconds": total_seconds,
+        },
+    })
 
     meta_meta = ds.get("meta", {})
 
@@ -151,6 +262,10 @@ def run_audit(
             "n_test": len(split["test_ids"]),
         },
         "classes": class_results,
+        "is_single_class": dataset_profile["is_single_class"],
+        "profile": dataset_profile,
+        "capability_matrix": dataset_profile["capability_matrix"],
+        "audit_logs": audit_logs,
         "errors": errors,
         "degradations": degradations,
         "runtime": {

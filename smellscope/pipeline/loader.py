@@ -58,8 +58,9 @@ def _infer_column_roles(columns: list[str], schema_id: str) -> Dict[str, Optiona
 def load_dataset(
     path_or_sample_id: str,
     label_col: str,
-    benign_label: str,
+    benign_label: str = "BENIGN",
     cfg: Optional[Dict[str, Any]] = None,
+    allow_single_class: bool = True,
 ) -> Dict[str, Any]:
     """Load, clean, standardize and validate an intrusion detection dataset.
 
@@ -148,17 +149,33 @@ def load_dataset(
     # Convert label column to string and strip whitespace
     raw_df[label_col] = raw_df[label_col].astype(str).str.strip()
 
-    # Verify benign label exists
+    # Check unique labels in the label column
     unique_labels = set(raw_df[label_col].unique())
-    if benign_label not in unique_labels:
+    if len(unique_labels) == 0:
         raise SmellScopeError(
-            code=E_BENIGN_LABEL_MISSING,
-            message=f"Benign label '{benign_label}' not found among unique labels: {unique_labels}",
-            details={"benign_label": benign_label, "unique_labels": list(unique_labels)},
+            code=E_SCHEMA,
+            message="Dataset label column contains no valid classes.",
+            details={"unique_classes": []},
         )
 
-    # Verify >= 2 classes
-    if len(unique_labels) < 2:
+    is_single_class = (len(unique_labels) == 1)
+    single_class_name = list(unique_labels)[0] if is_single_class else None
+
+    # Verify benign label exists or harmonize for single-class datasets
+    if benign_label not in unique_labels:
+        if is_single_class:
+            # For a single-class dataset (e.g. CIC-IDS-2017 Monday.csv BENIGN-only baseline),
+            # adapt benign_label to the sole observed class
+            benign_label = single_class_name
+        else:
+            raise SmellScopeError(
+                code=E_BENIGN_LABEL_MISSING,
+                message=f"Benign label '{benign_label}' not found among unique labels: {unique_labels}",
+                details={"benign_label": benign_label, "unique_labels": list(unique_labels)},
+            )
+
+    # If single-class is explicitly disallowed by caller, raise E_SCHEMA
+    if is_single_class and not allow_single_class:
         raise SmellScopeError(
             code=E_SCHEMA,
             message=f"Dataset must contain at least 2 distinct classes, found {len(unique_labels)}: {unique_labels}",
@@ -216,6 +233,8 @@ def load_dataset(
         "benign_label": benign_label,
         "schema_id": schema_id,
         "column_roles": roles,
+        "is_single_class": is_single_class,
+        "single_class_name": single_class_name,
         "meta": {
             "source_basename": target_path.name,
             "sha256": file_sha256,
@@ -223,6 +242,8 @@ def load_dataset(
             "n_rows_loaded": len(df_loaded),
             "dropped_inf_nan": dropped_inf_nan,
             "class_counts": class_counts,
+            "is_single_class": is_single_class,
+            "single_class_name": single_class_name,
             "subsample": {"max_rows_per_class": max_per_class, "seed": seed},
         },
     }

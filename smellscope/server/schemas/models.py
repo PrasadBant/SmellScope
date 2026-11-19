@@ -66,6 +66,41 @@ class DatasetValidateResponse(BaseModel):
     class_counts: Dict[str, int]
     column_roles: Dict[str, Optional[str]]
     warnings: List[str] = Field(default_factory=list)
+    is_single_class: bool = False
+    single_class_name: Optional[str] = None
+    supported_diagnostics: List[str] = Field(default_factory=list)
+    unsupported_diagnostics: Dict[str, str] = Field(default_factory=dict)
+    capability_matrix: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+
+
+class DatasetProfileResponse(BaseModel):
+    dataset_id: str
+    dataset_version: str = "v1.0"
+    dataset_fingerprint: str
+    row_count: int
+    column_count: int
+    feature_columns: List[str]
+    feature_types: Dict[str, str]
+    label_column: str
+    benign_label: str
+    available_classes: List[str]
+    class_counts: Dict[str, int]
+    class_ratios: Dict[str, float]
+    is_single_class: bool
+    is_binary: bool
+    is_multiclass: bool
+    has_benign: bool
+    has_attacks: bool
+    attack_classes: List[str]
+    missing_value_summary: Dict[str, Any]
+    infinite_value_summary: Dict[str, Any]
+    duplicate_summary: Dict[str, Any]
+    constant_feature_summary: Dict[str, Any]
+    port_columns_detected: List[str]
+    packet_size_columns_detected: List[str]
+    supported_diagnostics: List[str]
+    unsupported_diagnostics: Dict[str, str]
+    capability_matrix: Dict[str, Dict[str, Any]]
 
 
 class AuditStartRequest(BaseModel):

@@ -65,6 +65,98 @@ export interface DatasetValidateResponse {
     group: string | null;
   };
   warnings: string[];
+  is_single_class?: boolean;
+  single_class_name?: string | null;
+  supported_diagnostics?: string[];
+  unsupported_diagnostics?: Record<string, string>;
+  capability_matrix?: Record<string, {
+    status: string;
+    category: string;
+    reason: string;
+  }>;
+}
+
+export interface DatasetProfile {
+  dataset_id: string;
+  dataset_version: string;
+  dataset_fingerprint: string;
+  row_count: number;
+  column_count: number;
+  feature_columns: string[];
+  feature_types: Record<string, string>;
+  label_column: string;
+  benign_label: string;
+  available_classes: string[];
+  class_counts: Record<string, number>;
+  class_ratios: Record<string, number>;
+  is_single_class: boolean;
+  is_binary: boolean;
+  is_multiclass: boolean;
+  has_benign: boolean;
+  has_attacks: boolean;
+  attack_classes: string[];
+  missing_value_summary: {
+    total_cells: number;
+    affected_columns: string[];
+    affected_rows: number;
+    columns_dict: Record<string, number>;
+  };
+  infinite_value_summary: {
+    total_cells: number;
+    affected_columns: string[];
+    affected_rows: number;
+    columns_dict: Record<string, number>;
+  };
+  duplicate_summary: {
+    duplicate_count: number;
+    duplicate_percentage: number;
+  };
+  constant_feature_summary: {
+    constant_features: string[];
+    count: number;
+  };
+  port_columns_detected: string[];
+  packet_size_columns_detected: string[];
+  supported_diagnostics: string[];
+  unsupported_diagnostics: Record<string, string>;
+  capability_matrix: Record<string, {
+    status: string;
+    category: string;
+    reason: string;
+  }>;
+}
+
+export interface AuditLogEntry {
+  timestamp: string;
+  stage: string;
+  level: "INFO" | "WARN" | "ERROR" | "DEBUG";
+  operation: string;
+  duration_ms: number;
+  details: Record<string, any>;
+}
+
+export interface SmellMatrixHeatmap {
+  run_id: string;
+  classes: string[];
+  metrics: string[];
+  thresholds: Record<string, number>;
+  matrix: (number | null)[][];
+  is_single_class: boolean;
+  message?: string;
+}
+
+export interface FeatureImportanceHeatmap {
+  run_id: string;
+  classes: string[];
+  features: string[];
+  matrix: number[][];
+  message?: string;
+}
+
+export interface CorrelationHeatmap {
+  run_id: string;
+  features: string[];
+  matrix: number[][];
 }
 
 export interface AuditStartResponse {
@@ -220,6 +312,10 @@ export interface RunResult {
     n_test: number;
   };
   classes: ClassAuditResult[];
+  is_single_class?: boolean;
+  profile?: DatasetProfile;
+  capability_matrix?: Record<string, any>;
+  audit_logs?: AuditLogEntry[];
   errors: any[];
   degradations: string[];
   runtime: {

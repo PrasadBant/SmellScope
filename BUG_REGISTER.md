@@ -1,109 +1,50 @@
-# SmellScope 2.0 — Comprehensive Bug Register & Defect Resolution Log
+# Comprehensive Bug Register & Defect Resolution Log
 
-**Document Version:** 1.0.0  
-**Date:** November 2026  
-**Status:** Complete Remediation Signoff  
-**Total Defects Identified:** 8  
-**Total Defects Resolved:** 8  
-**Outstanding / Unresolved:** 0  
-
----
-
-## 1. Defect Classification Scheme
-
-- **P0 (Critical Scientific / Architectural Flaw):** Incorrect mathematical formulas, conflation of orthogonal dimensions, or risk inversion yielding deceptive research claims.
-- **P1 (High Functional / Evaluation Defect):** Missing endpoints, lack of multi-class ML metrics, unfair penalization of valid network traffic, or incomplete reporting.
-- **P2 (Medium Schema / Type Validation Defect):** Pydantic validation mismatches, missing imports, or UI locator ambiguities.
+## 1. Defect Classification System
+* **Severity Levels:**
+  - `CRITICAL`: System crash, unhandled 500 error, data corruption, or workflow block.
+  - `HIGH`: Incorrect mathematical calculations, wrong recommendations, or broken state persistence.
+  - `MEDIUM`: UI presentation error, missing context explanation, or unhandled undefined values.
+  - `LOW`: Cosmetic polish, label typo, or non-blocking layout overflow.
 
 ---
 
-## 2. Exhaustive Defect Register
+## 2. Resolved Defects Log
 
-### BUG-SC-01 (P0): Conflation of Data Quality and Shortcut Risk
-- **Component:** Core Architecture / Legacy Evaluation
-- **Discovered In:** Phase 1 Inspection
-- **Root Cause:** Prior to SmellScope 2.0, systems conflated raw CSV hygiene (absence of nulls/duplicates) with dataset research validity. A dataset with zero nulls but catastrophic ephemeral port shortcuts was rated as "99.8% Healthy", misleading researchers.
-- **Remediation:** Architected `smellscope.scoring` subsystem with strictly orthogonal dimensions:
-  - Dimension 1: Data Quality Score ($S_{\text{DQ}}$, 0–100, Higher = Better).
-  - Dimension 3: Shortcut & Leakage Risk Score ($S_{\text{Risk}}$, 0–100, **HIGHER = GREATER RISK**).
-- **Files Modified:** `smellscope/scoring/quality_score.py`, `smellscope/scoring/shortcut_risk_score.py`, `smellscope/scoring/score_config.py`.
-- **Verification Evidence:** `tests/scoring/test_scoring.py::test_shortcut_risk_score_severe_smells` passed; planted benchmark correctly flagged with 71.50 High Risk despite 99.80 Quality.
+### BUG-001: Single-Class `E_SCHEMA` Block on BENIGN-only Datasets
+* **Severity:** `CRITICAL`
+* **Symptoms:** When uploading or selecting a single-class dataset (such as `monday.csv` from CIC-IDS-2017), validation threw `SmellScopeError: E_SCHEMA: Dataset must contain at least 2 distinct classes, found 1: {'BENIGN'}`. The frontend marked `valid: false` and displayed an amber error notice, blocking the user from proceeding to Preprocessing or Auditing.
+* **Root Cause:** `smellscope/pipeline/loader.py` contained an unconditional assertion `if len(unique_labels) < 2: raise SmellScopeError(E_SCHEMA, ...)`. Furthermore, `smellscope/pipeline/split.py` called `train_test_split(..., stratify=labels)`, which raises a `ValueError` in scikit-learn when only 1 class is present.
+* **Fix Applied:**
+  1. Updated `load_dataset` with `allow_single_class: bool = True`. When `len(unique_labels) == 1`, set `is_single_class = True` and load normally.
+  2. In `make_locked_split`, if `is_single_class`, split random indices into 60/20/20 without `stratify=labels`.
+  3. In `validate_dataset` and `DatasetScreen.tsx`, set `valid: True`, display informative "SINGLE-CLASS BENCHMARK" notice, and enable "CONTINUE TO PREPROCESSING".
+* **Verification:** `tests/test_dynamic_workflow.py` and Playwright `Journey E` passed.
 
----
+### BUG-002: Hardcoded Feature Names in Recommendation Engine
+* **Severity:** `HIGH`
+* **Symptoms:** Datasets with dominant feature issues received recommendations mentioning hardcoded `"Init_Win_bytes_backward"`, even when that feature did not exist in the dataset.
+* **Root Cause:** `smellscope/remediation/recommender.py` contained hardcoded fallback: `dominant_feature = roles.get("dst_port") or ("Init_Win_bytes_backward" if "Init_Win_bytes_backward" in feature_cols else feature_cols[0])`.
+* **Fix Applied:** Refactored dominant feature discovery to dynamically extract the top feature from `class_info["paper"]["details"]["hdf_top_feature"]` or `class_info["hdf"]["dominant_feature"]`. Verified that candidate features exist in `working_df.columns` and are not already in `view.excluded_features`.
+* **Verification:** `tests/test_dynamic_workflow.py` confirmed 0 hardcoded feature recommendations.
 
-### BUG-SC-02 (P0): Misaligned Directionality in Overall Assessment Synthesis
-- **Component:** `smellscope/scoring/overall_assessment.py`
-- **Discovered In:** Scoring Subsystem Architecture Design
-- **Root Cause:** A naive linear combination would add $S_{\text{Risk}}$ to $S_{\text{DQ}}$, causing high-risk datasets to score higher than low-risk datasets.
-- **Remediation:** Explicitly inverted the risk dimension in the synthesis formula:
-  $$S_{\text{Overall}} = 0.30 \cdot S_{\text{DQ}} + 0.30 \cdot S_{\text{NIDS}} + 0.20 \cdot S_{\text{Rel}} + 0.20 \cdot (100.0 - S_{\text{Risk}})$$
-- **Files Modified:** `smellscope/scoring/overall_assessment.py`.
-- **Verification Evidence:** `tests/scoring/test_scoring.py::test_overall_dataset_assessment_synthesis` passed; boundary checks verify $S_{\text{Overall}} \in [0.0, 100.0]$ under all conditions.
+### BUG-003: Phantom Recommendations on Clean Control Datasets
+* **Severity:** `HIGH`
+* **Symptoms:** Clean synthetic datasets received spurious repair recommendations.
+* **Root Cause:** Recommendation triggers lacked guards checking `affected_records > 0`, `dup_count > 0`, and `missing_by_col` emptiness.
+* **Fix Applied:** Added strict pre-condition checks for every rule. If zero defects are detected, `generate_repair_recommendations` returns `[]`.
+* **Verification:** `test_clean_control_dataset_produces_zero_recommendations` passed.
 
----
+### BUG-004: Frontend `TypeError: Cannot read properties of undefined (reading 'toFixed')`
+* **Severity:** `MEDIUM`
+* **Symptoms:** In `FindingsScreen.tsx`, when `sfi_top` was undefined, numeric formatting threw a runtime error.
+* **Root Cause:** `c.sfi.sfi_top !== null` evaluated `true` when `sfi_top` was `undefined`.
+* **Fix Applied:** Wrapped numeric formatting in `typeof c.sfi?.sfi_top === "number" ? c.sfi.sfi_top.toFixed(3) : "N/A"`.
+* **Verification:** Vitest and Playwright passed.
 
-### BUG-SC-03 (P1): Unfair Penalization of Realistic Class Imbalance in NIDS Benchmarks
-- **Component:** `smellscope/scoring/nids_suitability_score.py`
-- **Discovered In:** Phase 1 Inspection (`SCORING_AUDIT_FINDINGS.md`)
-- **Root Cause:** Generic ML quality checks penalize class imbalance (e.g. 95:5 or 99:1 benign-to-attack ratios). In network security, 95% benign traffic is standard operational reality; penalizing it forces artificial 50/50 downsampling that distorts base-rate probabilities.
-- **Remediation:** Implemented a logarithmic tolerance function that allows realistic network skew up to $500:1$ without severe penalty ($S_{\text{imb}} \ge 75/100$), while strictly penalizing minority classes with $N_{\text{atk}} < 20$ samples.
-- **Files Modified:** `smellscope/scoring/nids_suitability_score.py`.
-- **Verification Evidence:** `tests/scoring/test_scoring.py::test_nids_suitability_imbalance_fairness` passed.
-
----
-
-### BUG-SC-04 (P1): Missing Multi-Class Advanced Evaluation Metrics in Baseline Evaluation
-- **Component:** `smellscope/core/eval.py`
-- **Discovered In:** Core Evaluation Inspection
-- **Root Cause:** `fit_and_evaluate` only computed binary accuracy, precision, recall, and $F_1$, omitting False Positive Rate (FPR), False Negative Rate (FNR), multi-class ROC-AUC, and PR-AUC.
-- **Remediation:** Extended `fit_and_evaluate` with `roc_auc_score(multi_class='ovr', average='macro')`, `precision_recall_curve`, FPR, and FNR, wrapped in defensive single-class and uncomputable guards.
-- **Files Modified:** `smellscope/core/eval.py`.
-- **Verification Evidence:** `tests/core/test_eval.py` passed; verified multi-class baseline metric computation without runtime errors.
-
----
-
-### BUG-SC-05 (P1): Missing Scores Endpoint in FastAPI Backend
-- **Component:** `smellscope/server/routers/improvement.py`, `smellscope/server/dependencies.py`
-- **Discovered In:** Backend API Integration
-- **Root Cause:** No dedicated REST endpoint existed to query dynamic dataset scores for an audit run.
-- **Remediation:** Added `GET /api/v1/audits/{run_id}/scores` with `get_dataset_scores` dependency in `dependencies.py` and exported public methods in `smellscope/api/__init__.py`.
-- **Files Modified:** `smellscope/server/routers/improvement.py`, `smellscope/server/dependencies.py`, `smellscope/api/__init__.py`.
-- **Verification Evidence:** Verified via live HTTP request returning 200 OK with all 4 dimensions and 100% evidence coverage.
-
----
-
-### BUG-SC-06 (P1): Offline HTML Report Missing Authoritative Scoring Table & Recommendations
-- **Component:** `smellscope/reporting/generator.py`, `smellscope/server/routers/reports.py`
-- **Discovered In:** Reporting Subsystem Review
-- **Root Cause:** Offline HTML reports only included raw paper heuristic tables, omitting the new 4-dimension scorecard, overall trust score, and intelligent repair recommendations.
-- **Remediation:** Updated `generate_html_report` to embed the overall trust gauge, 4-dimension scorecard cards, and intelligent recommendation tables with full CSS styling.
-- **Files Modified:** `smellscope/reporting/generator.py`, `smellscope/server/routers/reports.py`.
-- **Verification Evidence:** `tests/server/test_api_boundary.py::test_report_generation_and_download` passed; generated report contains valid HTML and CSS.
-
----
-
-### BUG-SC-07 (P2): Pydantic Schema Mismatch on Recommendations & Repair Plan Previews
-- **Component:** `smellscope/server/schemas/models.py`, `smellscope/remediation/manager.py`
-- **Discovered In:** Integration Testing
-- **Root Cause:**
-  - `RecommendationsResponse.recommendations[].evidence` was typed as `Dict[str, Any]` while `recommender.py` emitted string descriptions.
-  - `RepairPlanPreviewResponse.affected_rows_by_class` expected `Dict[str, int]` while `manager.py` emitted `{class: {before: X, after: Y, retention: Z}}`.
-- **Remediation:** Relaxed Pydantic schemas to accept flexible objects (`Any`), normalized dictionary fields, and updated frontend components to format nested counts.
-- **Files Modified:** `smellscope/server/schemas/models.py`, `smellscope/server/routers/improvement.py`, `frontend/src/features/improvement/ImprovementScreen.tsx`.
-- **Verification Evidence:** `test_improvement_centre_workflow` passed with 0 validation errors.
-
----
-
-### BUG-SC-08 (P2): NameError in `manager.py` Due to Missing Pathlib Import
-- **Component:** `smellscope/remediation/manager.py`
-- **Discovered In:** Repair Plan Application Verification
-- **Root Cause:** `manager.py` called `Path(export_path)` during repaired dataset CSV export, but `Path` was not imported from `pathlib`.
-- **Remediation:** Added `from pathlib import Path` to top-level imports of `manager.py`.
-- **Files Modified:** `smellscope/remediation/manager.py`.
-- **Verification Evidence:** `test_improvement_centre_workflow` and `test_remediation_and_rsm_lifecycle` passed with CSV successfully written to `data/repaired/`.
-
----
-
-## 3. Resolution Verification Signoff
-
-All 8 defects have been permanently remediated in source code, covered by automated unit and integration tests, and verified regression-free in the full automated test suite.
+### BUG-005: Playwright Locator Strict Mode Violations
+* **Severity:** `LOW`
+* **Symptoms:** Playwright test failures due to strict mode violations resolving to multiple matching text nodes (e.g. `getByText('Recall (TPR)')` or `getByText(/SINGLE-CLASS DATASET DETECTED/i)`).
+* **Root Cause:** Tables and badges both contained the exact search phrase.
+* **Fix Applied:** Targeted locators with `.first()` to resolve to the intended primary badge or card element.
+* **Verification:** All 5 Playwright journeys passed in 26.1s.

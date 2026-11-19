@@ -1,71 +1,67 @@
-# SmellScope 2.0 / 2.1 — End-to-End Test Execution Report
+# Complete End-to-End Test & Verification Report
 
-## 1. Test Suite Summary & Pass Rate
+## 1. Test Suite Architecture
 
-All automated test suites across all tiers were executed and passed with **100% success rate**.
-
-| Test Tier | Framework | Total Tests | Passed | Failed | Pass Rate | Duration |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Backend & Scientific Core Tests** | `pytest 9.1.1` (Python 3.13) | **61** | **61** | **0** | **100.0%** | $57.2\text{s}$ |
-| **Frontend Unit & Component Tests** | `Vitest 2.1.9` (JSDOM) | **16** | **16** | **0** | **100.0%** | $3.9\text{s}$ |
-| **End-to-End Real Browser Tests** | `Playwright` (Chromium) | **4** | **4** | **0** | **100.0%** | $25.5\text{s}$ |
-| **Total Test Coverage** | **Multi-Tier** | **81** | **81** | **0** | **100.0%** | $\sim 86.6\text{s}$ |
+SmellScope 2.0 is validated through a three-tier automated testing strategy:
+1. **Unit & Algorithm Tests (Python/Pytest):** Core scientific formulas ($UGT$, $WL$, $HDF$, $PDD$, $TC$, $SFI$, $GGI$), locked partition splitting, test leak prevention, scoring synthesis, and RSM safety checks.
+2. **API & Contract Boundary Tests (FastAPI TestClient):** Schema conformance, HTTP status codes, asynchronous job polling, model persistence, versioned bundles, and single-class validation.
+3. **End-to-End User Journey Tests (Playwright / Chromium):** Full browser simulation executing real user interactions across all stages from Upload to Final Report.
 
 ---
 
-## 2. Backend Pytest Breakdown (`tests/`)
+## 2. Test Execution Results
 
-```
-============================= test session starts =============================
-platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0
-collected 61 items
+### Tier 1 & 2: Backend Pytest Suite
+* **Command:** `pytest tests/`
+* **Execution Duration:** 59.81s
+* **Passed:** **65 / 65 tests (100%)**
+* **Failed:** 0
+* **Key Test Coverage:**
+  - `tests/core/test_audit.py`: Multi-class audit execution & contract conformance
+  - `tests/core/test_eval.py`: Partition metric calculation & train/val/test isolation
+  - `tests/core/test_sfi.py`: Monte Carlo null-distribution calibration ($N=100$)
+  - `tests/core/test_heuristics.py`: Mathematical bounds for 5 paper heuristics
+  - `tests/scoring/test_scoring.py`: 4-dimension score synthesis and interpretation bands
+  - `tests/server/test_api_boundary.py`: Full FastAPI REST endpoints & job lifecycle
+  - `tests/test_model_registry.test.py`: Persistent storage, metadata, compatibility & bundle packaging
+  - `tests/test_master_fixes.py`: Bug fixes for parameter modification, SFI zero-findings, and R1 ablation
+  - `tests/test_dynamic_workflow.py`: Dynamic single-class profiling, clean control invariance, and heatmap APIs
 
-tests/core/test_audit.py (4 tests) ..................................... [PASSED]
-tests/core/test_contract.py (3 tests) .................................. [PASSED]
-tests/core/test_eval.py (2 tests) ...................................... [PASSED]
-tests/core/test_ggi.py (2 tests) ....................................... [PASSED]
-tests/core/test_heuristics.py (5 tests) ................................ [PASSED]
-tests/core/test_integration_readiness.py (2 tests) .................... [PASSED]
-tests/core/test_planted.py (1 test) .................................... [PASSED]
-tests/core/test_preprocess.py (2 tests) ................................ [PASSED]
-tests/core/test_reproducibility.py (1 test) ............................ [PASSED]
-tests/core/test_sfi.py (3 tests) ....................................... [PASSED]
-tests/core/test_taxonomy.py (1 test) ................................... [PASSED]
-tests/scoring/test_scoring.py (12 tests) ................................ [PASSED]
-tests/server/test_api_boundary.py (12 tests) ............................ [PASSED]
-tests/test_master_fixes.py (3 tests) ................................... [PASSED]
-tests/test_model_registry.py (2 tests) ................................. [PASSED]
-tests/test_perfect_accuracy.py (2 tests) ............................... [PASSED]
-tests/test_workstation_e2e.py (4 tests) ................................. [PASSED]
+### Tier 3: Frontend Vitest Suite
+* **Command:** `npm --prefix frontend run test -- --run`
+* **Execution Duration:** 4.06s
+* **Passed:** **16 / 16 tests (100%)**
+* **Failed:** 0
+* **Key Test Coverage:**
+  - `src/test/components.test.tsx`: UI primitives (Badge, Card, MetricCard)
+  - `src/test/workflow_fixes.test.tsx`: Master workflow steps, dropdown defaults, validation
+  - `src/test/model_registry.test.tsx`: Accuracy diagnostic panel, model save modal, registry
+  - `src/test/app.test.tsx`: Navigation shell, routes, disclaimer
 
-============================= 61 passed in 57.18s =============================
-```
-
----
-
-## 3. Frontend Vitest Breakdown (`frontend/src/test/`)
-
-```
- RUN  v2.1.9 C:/Users/vishu/badsmellpart1/frontend
-
- ✓ src/test/components.test.tsx (6 tests)
- ✓ src/test/workflow_fixes.test.tsx (3 tests)
- ✓ src/test/model_registry.test.tsx (3 tests)
- ✓ src/test/app.test.tsx (4 tests)
-
- Test Files  4 passed (4)
-      Tests  16 passed (16)
-   Duration  3.85s
-```
+### Tier 4: Playwright Browser End-to-End (E2E) Suite
+* **Command:** `npx --prefix frontend playwright test -c frontend/playwright.config.ts`
+* **Execution Duration:** 26.1s
+* **Passed:** **5 / 5 browser journeys (100%)**
+* **Failed:** 0
+* **Journeys Verified:**
+  - **Journey 1 (Path A):** Complete 13-step guided audit without remediation directly to Offline Report.
+  - **Journey 2 (Path B):** Remediation Workflow (R1 Feature Ablation): Preview $\rightarrow$ RSM Safety Check $\rightarrow$ Apply $\rightarrow$ Rebenchmark $\rightarrow$ Comparison $\rightarrow$ Final Report.
+  - **Journey 3 (Path C):** Dataset Improvement Centre: Audit $\rightarrow$ Recommendations $\rightarrow$ Plan Preview $\rightarrow$ Apply $\rightarrow$ Comparison.
+  - **Journey 4 (Path D):** Model Persistence & Reusable Training Bundle (`.zip`) Export.
+  - **Journey 5 (Path E):** Single-Class Benchmark (`monday.csv` BENIGN-only): File upload, successful validation without `E_SCHEMA`, Capability Matrix rendering, and unlocked Preprocessing continuation.
 
 ---
 
-## 4. Playwright End-to-End Real Browser Journeys (`frontend/e2e/workstation.spec.ts`)
+## 3. Real Browser Execution Evidence
 
-| Test Journey | Description | Result | Elapsed Time |
-| :--- | :--- | :---: | :---: |
-| **Path A (Audit to Report)** | Complete 13-step guided audit flow: Upload $\to$ Validation $\to$ Preprocessing $\to$ Smells $\to$ Baseline $\to$ SFI $\to$ GGI $\to$ Findings $\to$ Direct Offline Report. | **PASSED** | $14.6\text{s}$ |
-| **Path B (Remediation R1)** | R1 Feature Ablation: What-if preview $\to$ RSM safety checks $\to$ Apply fix $\to$ Rebenchmark $\to$ Offline HTML report. | **PASSED** | $2.1\text{s}$ |
-| **Journey C (Improvement Centre)** | Dataset Improvement Centre: Audit $\to$ Automated Recommendations $\to$ Repair Plan Preview $\to$ Apply $\to$ Before/After Comparison. | **PASSED** | $3.6\text{s}$ |
-| **Journey D (Model Persistence)** | Model persistence & bundle export: Save trained model $\to$ Model registry listing $\to$ Download `.joblib` $\to$ Download 11-file `.zip` bundle. | **PASSED** | $3.0\text{s}$ |
-| **Total Playwright Suite** | 4 complete user journeys on live Chromium browser. | **4 / 4 PASSED** | **25.5s** |
+```
+Running 5 tests using 1 worker
+
+  ok 1 [chromium] › frontend\e2e\workstation.spec.ts:32:3 › SmellScope 2.1 Complete Guided Scientific Workflow E2E Verification › Path A — No Remediation: Complete 13-Step Guided Audit directly to Offline Report (14.0s)
+  ok 2 [chromium] › frontend\e2e\workstation.spec.ts:152:3 › SmellScope 2.1 Complete Guided Scientific Workflow E2E Verification › Remediation Workflow (R1 Feature Ablation): Preview -> RSM -> Apply -> Rebenchmark -> Final Report (2.2s)
+  ok 3 [chromium] › frontend\e2e\workstation.spec.ts:199:3 › SmellScope 2.1 Complete Guided Scientific Workflow E2E Verification › Journey C — Dataset Improvement Centre: Audit -> Recommendations -> Plan Preview -> Apply -> Comparison (3.6s)
+  ok 4 [chromium] › frontend\e2e\workstation.spec.ts:255:3 › SmellScope 2.1 Complete Guided Scientific Workflow E2E Verification › Journey D — Model Persistence & Reusable Training Bundle (.zip) Export (2.9s)
+  ok 5 [chromium] › frontend\e2e\workstation.spec.ts:295:3 › SmellScope 2.1 Complete Guided Scientific Workflow E2E Verification › Journey E — Single-Class Benchmark (BENIGN-only): Validation Health Check passes, Capability Matrix renders, and Continue to Preprocessing is enabled (1.3s)
+
+  5 passed (26.1s)
+```

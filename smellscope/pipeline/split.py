@@ -59,25 +59,41 @@ def make_locked_split(
 
     row_ids = df["__row_id"].to_numpy()
     labels = df[label_col].to_numpy()
+    is_single = ds.get("is_single_class", False) or len(class_counts) == 1
 
-    # Step 1: Split train vs temp (val + test)
     temp_frac = val_frac + test_frac
-    train_ids_arr, temp_ids_arr, _, temp_labels = train_test_split(
-        row_ids,
-        labels,
-        test_size=temp_frac,
-        random_state=seed,
-        stratify=labels,
-    )
-
-    # Step 2: Split temp into val and test
     relative_test_frac = test_frac / temp_frac
-    val_ids_arr, test_ids_arr = train_test_split(
-        temp_ids_arr,
-        test_size=relative_test_frac,
-        random_state=seed + 1,
-        stratify=temp_labels,
-    )
+
+    if is_single:
+        # Single-class dataset (e.g. BENIGN-only baseline capture): split without stratification
+        train_ids_arr, temp_ids_arr = train_test_split(
+            row_ids,
+            test_size=temp_frac,
+            random_state=seed,
+        )
+        val_ids_arr, test_ids_arr = train_test_split(
+            temp_ids_arr,
+            test_size=relative_test_frac,
+            random_state=seed + 1,
+        )
+    else:
+        # Multi-class or binary dataset: standard stratified split
+        # Step 1: Split train vs temp (val + test)
+        train_ids_arr, temp_ids_arr, _, temp_labels = train_test_split(
+            row_ids,
+            labels,
+            test_size=temp_frac,
+            random_state=seed,
+            stratify=labels,
+        )
+
+        # Step 2: Split temp into val and test
+        val_ids_arr, test_ids_arr = train_test_split(
+            temp_ids_arr,
+            test_size=relative_test_frac,
+            random_state=seed + 1,
+            stratify=temp_labels,
+        )
 
     train_ids = [int(x) for x in sorted(train_ids_arr)]
     val_ids = [int(x) for x in sorted(val_ids_arr)]

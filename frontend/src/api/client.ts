@@ -1,10 +1,14 @@
 import {
+  AuditLogEntry,
   AuditStartResponse,
   AuditStatus,
+  CorrelationHeatmap,
   DatasetItem,
   DatasetMetadata,
   DatasetPreview,
+  DatasetProfile,
   DatasetValidateResponse,
+  FeatureImportanceHeatmap,
   FragilityGridResponse,
   HealthResponse,
   ModelCompatibilityResponse,
@@ -13,6 +17,7 @@ import {
   RemediationPreview,
   ReportGenerateResponse,
   RunResult,
+  SmellMatrixHeatmap,
   ViewsResponse,
 } from "@/types/api";
 
@@ -59,6 +64,7 @@ export const api = {
   // Datasets
   listDatasets: () => request<DatasetItem[]>("/datasets"),
   getDatasetMetadata: (id: string) => request<DatasetMetadata>(`/datasets/${id}`),
+  getDatasetProfile: (id: string) => request<DatasetProfile>(`/datasets/${id}/profile`),
   getDatasetPreview: (id: string, limit = 50) => request<DatasetPreview>(`/datasets/${id}/preview?limit=${limit}`),
   validateDataset: (id: string, req: { label_col: string; benign_label: string; max_rows_per_class?: number; seed?: number }) =>
     request<DatasetValidateResponse>(`/datasets/${id}/validate`, {
@@ -93,6 +99,11 @@ export const api = {
   getAuditResults: (runId: string) => request<RunResult>(`/audits/${runId}/results`),
   getClassDiagnostics: (runId: string, classId: string) =>
     request<any>(`/audits/${runId}/classes/${classId}/diagnostics`),
+  getAuditLogs: (runId: string) => request<AuditLogEntry[]>(`/audits/${runId}/logs`),
+  getSmellMatrixHeatmap: (runId: string) => request<SmellMatrixHeatmap>(`/audits/${runId}/heatmaps/smell-matrix`),
+  getFeatureImportanceHeatmap: (runId: string) => request<FeatureImportanceHeatmap>(`/audits/${runId}/heatmaps/feature-importance`),
+  getCorrelationHeatmap: (runId: string, maxFeatures = 12) =>
+    request<CorrelationHeatmap>(`/audits/${runId}/heatmaps/correlations?max_features=${maxFeatures}`),
   getFragilityGrid: (runId: string, cls: string, features: [string, string]) =>
     request<FragilityGridResponse>(`/audits/${runId}/fragility-grid`, {
       method: "POST",

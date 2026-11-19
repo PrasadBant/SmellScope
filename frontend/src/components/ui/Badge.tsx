@@ -4,6 +4,7 @@ import { cn } from "@/utils/cn";
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?:
     | "default"
+    | "info"
     | "success"
     | "clean"
     | "warning"
@@ -29,6 +30,7 @@ export const Badge: React.FC<BadgeProps> = ({
 }) => {
   const variantStyles = {
     default: "bg-accent-primary/15 text-accent-secondary border-accent-primary/30",
+    info: "bg-cyan-950/40 text-cyan-300 border-cyan-800/60 font-mono",
     secondary: "bg-bg-elevated text-txt-secondary border-border",
     success: "bg-status-success/15 text-emerald-400 border-status-success/30",
     clean: "bg-status-success/15 text-emerald-400 border-status-success/30",

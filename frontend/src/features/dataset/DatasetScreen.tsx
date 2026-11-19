@@ -593,6 +593,33 @@ export const DatasetScreen: React.FC = () => {
             </CardContent>
           </Card>
 
+          {/* Single-Class Capability Notice */}
+          {datasetValidation?.is_single_class && (
+            <div className="p-4 rounded-xl border border-cyan-500/30 bg-cyan-950/20 space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="info">SINGLE-CLASS DATASET DETECTED</Badge>
+                <span className="text-xs text-cyan-200 font-medium">
+                  "{datasetValidation.single_class_name || "BENIGN"}" Baseline Capture Mode
+                </span>
+              </div>
+              <p className="text-xs text-txt-secondary leading-relaxed">
+                This dataset contains only one class. SmellScope will profile technical data quality (<span className="font-mono text-cyan-300">S_DQ</span>), identify missing/infinite values, check for duplicate flows, and analyze feature distributions. Supervised ML classification benchmarks, SFI fragility, and attack-specific heuristics are marked <strong className="text-txt-primary">NOT APPLICABLE</strong> because no malicious attack traffic is present to contrast with benign baseline flows.
+              </p>
+              {datasetValidation.capability_matrix && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1 text-[11px]">
+                  {Object.entries(datasetValidation.capability_matrix).slice(0, 9).map(([k, cap]: any) => (
+                    <div key={k} className="p-2 rounded bg-bg-card/70 border border-border flex items-center justify-between">
+                      <span className="font-mono truncate text-txt-muted text-[10px]">{k.replace(/_/g, " ")}</span>
+                      <Badge variant={cap.status === "AVAILABLE" ? "success" : "default"}>
+                        {cap.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Ten Health Checks Table */}
           <Card>
             <CardHeader className="py-3 px-4">
@@ -735,10 +762,12 @@ export const DatasetScreen: React.FC = () => {
                   {/* 9. Class Distribution */}
                   <tr>
                     <td className="p-3 font-semibold text-txt-primary">9. Class Distribution</td>
-                    <td className="p-3 text-txt-muted">At least 1 attack class and 1 benign class</td>
+                    <td className="p-3 text-txt-muted">Class topology verification</td>
                     <td className="p-3 text-center">
                       {(datasetValidation?.unique_classes.length || 0) >= 2 ? (
                         <Badge variant="success">PASS</Badge>
+                      ) : datasetValidation?.is_single_class ? (
+                        <Badge variant="info">SINGLE-CLASS</Badge>
                       ) : (
                         <Badge variant="danger">FAIL</Badge>
                       )}
@@ -746,8 +775,10 @@ export const DatasetScreen: React.FC = () => {
                     <td className="p-3 text-txt-secondary">
                       {(datasetValidation?.unique_classes.length || 0) >= 2 ? (
                         `${datasetValidation?.unique_classes.length} distinct classes detected: ${datasetValidation?.unique_classes.join(", ")}`
+                      ) : datasetValidation?.is_single_class ? (
+                        `Single-class benchmark detected (${datasetValidation?.unique_classes.join(", ") || benignLabel}). Data Quality ($S_DQ$) profiling is available. Attack heuristics and supervised ML benchmarks will be marked NOT_APPLICABLE.`
                       ) : (
-                        `Only ${datasetValidation?.unique_classes.length || 1} class detected (${datasetValidation?.unique_classes.join(", ") || benignLabel}). NIDS benchmarking requires both a benign baseline and at least one attack class to evaluate classifier decision boundaries.`
+                        `Only ${datasetValidation?.unique_classes.length || 1} class detected (${datasetValidation?.unique_classes.join(", ") || benignLabel}).`
                       )}
                     </td>
                   </tr>

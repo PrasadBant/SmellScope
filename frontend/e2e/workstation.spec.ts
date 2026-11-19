@@ -291,4 +291,51 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
       await closeBtn.click();
     }
   });
+
+  test("Journey E — Single-Class Benchmark (BENIGN-only): Validation Health Check passes, Capability Matrix renders, and Continue to Preprocessing is enabled", async ({ page }) => {
+    await page.goto("/dataset");
+    await expect(page.getByText("Upload Your Dataset")).toBeVisible();
+
+    // Create a temporary single-class CSV buffer
+    const csvContent =
+      "Destination Port,Flow Duration,Total Fwd Packets,Packet Length Mean,Label\n" +
+      "80,1200,5,300,BENIGN\n" +
+      "443,1500,8,450,BENIGN\n" +
+      "80,800,3,150,BENIGN\n" +
+      "443,2100,12,600,BENIGN\n";
+
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "monday_benign.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(csvContent),
+    });
+
+    // Check upload success
+    await expect(page.getByText(/Dataset uploaded successfully/i)).toBeVisible({ timeout: 10000 });
+
+    // Continue to validation
+    const toValidationBtn = page.getByRole("button", { name: /CONTINUE TO VALIDATION/i });
+    await expect(toValidationBtn).toBeVisible();
+    await toValidationBtn.click();
+
+    // Verify Check Dataset Health screen
+    await expect(page.getByText("Check Dataset Health")).toBeVisible();
+
+    // Re-run health check
+    const recheckBtn = page.getByRole("button", { name: /Re-Run Health Check/i });
+    await expect(recheckBtn).toBeVisible();
+    await recheckBtn.click();
+
+    // Verify single-class detection badge and notice appear, NOT an E_SCHEMA error
+    await expect(page.getByText(/SINGLE-CLASS DATASET DETECTED/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Data Quality Mode/i).or(page.getByText(/Data Quality/i)).first()).toBeVisible();
+
+    // Verify CONTINUE TO PREPROCESSING is ENABLED (not disabled!)
+    const toPreprocBtn = page.getByRole("button", { name: /CONTINUE TO PREPROCESSING/i });
+    await expect(toPreprocBtn).toBeEnabled();
+    await toPreprocBtn.click();
+
+    // Verify step 3 is reached
+    await expect(page.getByText("Prepare Your Dataset")).toBeVisible();
+  });
 });

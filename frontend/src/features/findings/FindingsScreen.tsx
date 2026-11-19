@@ -86,7 +86,7 @@ export const FindingsScreen: React.FC = () => {
     );
   }
 
-  if (!latestRunResult || availableClasses.length === 0) {
+  if (!latestRunResult) {
     return (
       <EmptyState
         title="No Audit Findings Available"
@@ -161,27 +161,34 @@ export const FindingsScreen: React.FC = () => {
       </div>
 
       {/* Target Attack Class Bar */}
-      <div className="flex items-center gap-2 overflow-x-auto p-2.5 rounded-xl border border-border bg-bg-card scrollbar-thin">
-        <span className="text-[11px] font-semibold text-txt-muted uppercase tracking-wider px-2 shrink-0">
-          Target Class:
-        </span>
-        {availableClasses.map((c) => {
-          const isSelected = activeClass === c.class;
-          return (
-            <button
-              key={c.class}
-              onClick={() => setSelectedClass(c.class)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${isSelected
-                ? "bg-accent-primary text-white shadow-sm border border-accent-primary/40 font-bold"
-                : "bg-bg-elevated/70 text-txt-secondary border border-border hover:bg-bg-elevated hover:text-txt-primary"
-                }`}
-            >
-              <span>{c.class}</span>
-              {c.sfi.flag && <span className="h-2 w-2 rounded-full bg-status-block shrink-0" />}
-            </button>
-          );
-        })}
-      </div>
+      {availableClasses.length > 0 ? (
+        <div className="flex items-center gap-2 overflow-x-auto p-2.5 rounded-xl border border-border bg-bg-card scrollbar-thin">
+          <span className="text-[11px] font-semibold text-txt-muted uppercase tracking-wider px-2 shrink-0">
+            Target Class:
+          </span>
+          {availableClasses.map((c) => {
+            const isSelected = activeClass === c.class;
+            return (
+              <button
+                key={c.class}
+                onClick={() => setSelectedClass(c.class)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${isSelected
+                  ? "bg-accent-primary text-white shadow-sm border border-accent-primary/40 font-bold"
+                  : "bg-bg-elevated/70 text-txt-secondary border border-border hover:bg-bg-elevated hover:text-txt-primary"
+                  }`}
+              >
+                <span>{c.class}</span>
+                {c.sfi.flag && <span className="h-2 w-2 rounded-full bg-status-block shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="p-3 rounded-xl border border-cyan-500/30 bg-cyan-950/20 text-xs font-mono text-cyan-200 flex items-center justify-between">
+          <span>Active Class: {latestRunResult?.dataset?.benign_label || "BENIGN"} (Single-Class Dataset)</span>
+          <Badge variant="info">Data Quality Mode</Badge>
+        </div>
+      )}
 
       {/* TAB 1: COMPREHENSIVE AUDIT RESULTS (Organized Sections 1 - 6) */}
       {activeTab === "overview" && (
@@ -504,13 +511,20 @@ export const FindingsScreen: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {availableClasses.map((c) => (
-                    <tr
-                      key={c.class}
-                      onClick={() => setSelectedClass(c.class)}
-                      className={`cursor-pointer transition-colors ${c.class === activeClass ? "bg-accent-primary/10" : "hover:bg-bg-elevated/40"
-                        }`}
-                    >
+                  {availableClasses.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-txt-muted text-xs">
+                        Five Heuristics (UGT, WL, HDF, PDD, TC, SFI) are <strong className="text-txt-primary">NOT APPLICABLE</strong> for single-class datasets ({latestRunResult?.dataset?.benign_label || "BENIGN"}-only). Technical Data Quality is evaluated below.
+                      </td>
+                    </tr>
+                  ) : (
+                    availableClasses.map((c) => (
+                      <tr
+                        key={c.class}
+                        onClick={() => setSelectedClass(c.class)}
+                        className={`cursor-pointer transition-colors ${c.class === activeClass ? "bg-accent-primary/10" : "hover:bg-bg-elevated/40"
+                          }`}
+                      >
                       <td className="p-3 font-semibold text-txt-primary flex items-center gap-2">
                         {c.class}
                         <span className="text-[10px] text-txt-muted font-mono font-normal">N={c.n}</span>
@@ -529,7 +543,8 @@ export const FindingsScreen: React.FC = () => {
                         </Badge>
                       </td>
                     </tr>
-                  ))}
+                  ))
+                )}
                 </tbody>
               </table>
             </CardContent>
@@ -683,7 +698,14 @@ export const FindingsScreen: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60 font-mono">
-                  {availableClasses.map((c) => {
+                  {availableClasses.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="py-8 px-4 text-center text-txt-muted text-xs font-sans">
+                        Per-class smell matrix is <strong className="text-txt-primary">NOT APPLICABLE</strong> for single-class datasets ({latestRunResult?.dataset?.benign_label || "BENIGN"}-only).
+                      </td>
+                    </tr>
+                  ) : (
+                    availableClasses.map((c) => {
                     const ugt = c.paper?.UGT;
                     const wl = c.paper?.WL;
                     const hdf = c.paper?.HDF;
@@ -756,7 +778,8 @@ export const FindingsScreen: React.FC = () => {
                         </td>
                       </tr>
                     );
-                  })}
+                  })
+                )}
                 </tbody>
               </table>
             </CardContent>
@@ -772,7 +795,7 @@ export const FindingsScreen: React.FC = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-4 space-y-3">
-                {classData.sfi.top_features && classData.sfi.top_features.length > 0 ? (
+                {classData?.sfi?.top_features && classData.sfi.top_features.length > 0 ? (
                   <div className="space-y-2">
                     {classData.sfi.top_features.map((feat, idx) => {
                       const cat = classData.sfi.categories ? classData.sfi.categories[idx] : "UNMAPPED";
@@ -827,7 +850,7 @@ export const FindingsScreen: React.FC = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-4 space-y-3">
-                {classData.sfi?.fragility_curve?.delta?.length > 0 ? (
+                {classData?.sfi?.fragility_curve?.delta?.length > 0 ? (
                   <SfiDecayPlot
                     deltas={classData.sfi.fragility_curve.delta}
                     recallTop={classData.sfi.fragility_curve.recall_top}

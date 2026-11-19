@@ -30,7 +30,7 @@ import { api } from "@/api/client";
 import { METRIC_EXPLANATIONS, HeuristicKey } from "@/utils/explanations";
 import { ClassAuditResult } from "@/types/api";
 
-type AuditSubStep = "4_HEURISTICS" | "5_BASELINE" | "6_SFI" | "7_GGI";
+type AuditSubStep = "4_HEURISTICS" | "5_BASELINE" | "6_SFI" | "7_GGI" | "8_LOGS";
 
 export const AuditScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -49,6 +49,8 @@ export const AuditScreen: React.FC = () => {
 
   const [currentStep, setCurrentStep] = useState<AuditSubStep>("4_HEURISTICS");
   const [auditRunning, setAuditRunning] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [logStageFilter, setLogStageFilter] = useState<string>("ALL");
   const [auditProgress, setAuditProgress] = useState<{
     status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPED";
     step: number;
@@ -80,6 +82,15 @@ export const AuditScreen: React.FC = () => {
       .then((res) => setPublishedData(res.benchmarks))
       .catch((err) => console.error("Failed to load published benchmark values:", err));
   }, []);
+
+  // Fetch structured execution logs
+  useEffect(() => {
+    if (latestRunResult?.run_id) {
+      api.getAuditLogs(latestRunResult.run_id)
+        .then(setAuditLogs)
+        .catch(() => {});
+    }
+  }, [latestRunResult?.run_id, currentStep]);
 
   const handleLaunchAudit = async () => {
     if (!activeDatasetId) return;
@@ -205,6 +216,16 @@ export const AuditScreen: React.FC = () => {
               }`}
             >
               Step 7 · GGI
+            </button>
+            <button
+              onClick={() => setCurrentStep("8_LOGS")}
+              className={`px-3 py-1.5 rounded-md font-semibold transition-all shrink-0 ${
+                currentStep === "8_LOGS"
+                  ? "bg-accent-primary text-white shadow-sm"
+                  : "text-txt-muted hover:text-txt-primary"
+              }`}
+            >
+              Step 8 · Audit Logs
             </button>
           </div>
         </div>
@@ -1068,6 +1089,233 @@ export const AuditScreen: React.FC = () => {
               onClick={() => setCurrentStep("6_SFI")}
             >
               Back to SFI
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              className="gap-2 font-bold"
+              onClick={() => {
+                setActiveStage("FINDINGS");
+                navigate("/findings");
+              }}
+            >
+              VIEW AUDIT FINDINGS <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SINGLE-CLASS DATASET MODE NOTICE (When no attack classes present)         */}
+      {/* ========================================================================= */}
+      {latestRunResult && (latestRunResult.is_single_class || availableClasses.length === 0) && currentStep !== "8_LOGS" && (
+        <div className="space-y-6">
+          <div className="p-6 rounded-xl border border-cyan-500/40 bg-cyan-950/20 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="info">SINGLE-CLASS BENCHMARK MODE</Badge>
+                <h4 className="text-sm font-bold text-txt-primary">
+                  "{latestRunResult.dataset?.benign_label || "BENIGN"}"-Only Traffic Profile
+                </h4>
+              </div>
+              <span className="text-xs font-mono text-cyan-300">
+                Run ID: {latestRunResult.run_id}
+              </span>
+            </div>
+
+            <p className="text-xs text-txt-secondary leading-relaxed">
+              This dataset contains only one class. Technical Data Quality (<code className="font-mono text-cyan-300">S_DQ</code>) profiling, missing/infinite value scans, duplicate row detection, and feature distributions are fully active. Supervised classification ML benchmarks, Shortcut Fragility Index (SFI), Generalization Gap Index (GGI), and attack heuristics (UGT, WL, HDF, PDD, TC) are marked <strong className="text-txt-primary">NOT APPLICABLE</strong> because there is no attack class to distinguish from benign traffic.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <Card className="p-4 space-y-3 bg-bg-card/70 border-border">
+                <h5 className="text-xs font-bold text-txt-primary uppercase tracking-wider flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  Evaluated Diagnostics (Available)
+                </h5>
+                <ul className="space-y-1.5 text-xs text-txt-secondary font-mono text-[11px]">
+                  <li className="flex items-center justify-between">
+                    <span>Missing Values & Null Counts:</span>
+                    <Badge variant="success">EVALUATED</Badge>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>IEEE 754 Infinite (+/-Inf):</span>
+                    <Badge variant="success">EVALUATED</Badge>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>Duplicate Flow Vectors:</span>
+                    <Badge variant="success">EVALUATED</Badge>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>Zero-Variance Constants:</span>
+                    <Badge variant="success">EVALUATED</Badge>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>Feature Quartile Distributions:</span>
+                    <Badge variant="success">EVALUATED</Badge>
+                  </li>
+                </ul>
+              </Card>
+
+              <Card className="p-4 space-y-3 bg-bg-card/70 border-border">
+                <h5 className="text-xs font-bold text-txt-primary uppercase tracking-wider flex items-center gap-2">
+                  <Info className="h-4 w-4 text-txt-muted" />
+                  Attack Diagnostics (Not Applicable)
+                </h5>
+                <ul className="space-y-1.5 text-xs text-txt-secondary font-mono text-[11px]">
+                  <li className="flex items-center justify-between">
+                    <span>UGT Ephemeral Port Heuristic:</span>
+                    <Badge variant="default">NOT APPLICABLE</Badge>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>WL Packet Length Repetition:</span>
+                    <Badge variant="default">NOT APPLICABLE</Badge>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>HDF Feature Dominance:</span>
+                    <Badge variant="default">NOT APPLICABLE</Badge>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>Shortcut Fragility Index (SFI):</span>
+                    <Badge variant="default">NOT APPLICABLE</Badge>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>Supervised ML Classification:</span>
+                    <Badge variant="default">NOT APPLICABLE</Badge>
+                  </li>
+                </ul>
+              </Card>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => {
+                  setActiveStage("FINDINGS");
+                  navigate("/findings");
+                }}
+              >
+                VIEW FINDINGS & SCORES <ArrowRight className="h-4 w-4 ml-1.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => setCurrentStep("8_LOGS")}
+              >
+                Inspect Audit Execution Logs
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* STEP 8 — STRUCTURED AUDIT EXECUTION LOGS & TRACEABILITY                    */}
+      {/* ========================================================================= */}
+      {currentStep === "8_LOGS" && (
+        <div className="space-y-6">
+          <div className="p-4 rounded-xl border border-border bg-bg-card flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-txt-primary">Audit Execution Logs & Traceability</h3>
+              <p className="text-xs text-txt-muted mt-1 leading-relaxed">
+                Chronological audit trial tracking ingestion, validation, partition splits, heuristic timings, and diagnostic results.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-txt-muted">Filter Stage:</span>
+              <select
+                value={logStageFilter}
+                onChange={(e) => setLogStageFilter(e.target.value)}
+                className="rounded border border-border bg-bg-elevated px-2.5 py-1 text-xs font-mono text-txt-primary focus:border-accent-primary focus:outline-none"
+              >
+                <option value="ALL">All Stages</option>
+                <option value="INGESTION">INGESTION</option>
+                <option value="VALIDATION">VALIDATION</option>
+                <option value="SPLIT">SPLIT</option>
+                <option value="CLASS_AUDIT">CLASS_AUDIT</option>
+                <option value="COMPLETION">COMPLETION</option>
+              </select>
+            </div>
+          </div>
+
+          <Card className="overflow-hidden">
+            <CardHeader className="py-3 px-4 border-b border-border bg-bg-elevated/40">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-txt-primary">
+                  Execution Log Entries ({auditLogs.filter((l) => logStageFilter === "ALL" || l.stage === logStageFilter).length})
+                </span>
+                <span className="font-mono text-txt-muted text-[11px]">
+                  Run ID: {latestRunResult?.run_id || activeRunId || "N/A"}
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 overflow-x-auto">
+              {auditLogs.length === 0 ? (
+                <div className="p-8 text-center text-xs text-txt-muted">
+                  No execution logs recorded yet. Launch a scientific audit to view the live execution trail.
+                </div>
+              ) : (
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-bg-elevated/70 border-b border-border text-[11px] text-txt-muted uppercase font-bold">
+                    <tr>
+                      <th className="p-3">Timestamp (UTC)</th>
+                      <th className="p-3">Stage</th>
+                      <th className="p-3 text-center">Level</th>
+                      <th className="p-3">Operation / Message</th>
+                      <th className="p-3 text-right">Duration</th>
+                      <th className="p-3">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border font-mono text-[11px]">
+                    {auditLogs
+                      .filter((l) => logStageFilter === "ALL" || l.stage === logStageFilter)
+                      .map((log, idx) => (
+                        <tr key={idx} className="hover:bg-bg-elevated/40 transition-colors">
+                          <td className="p-3 text-txt-muted whitespace-nowrap">
+                            {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : "--"}
+                          </td>
+                          <td className="p-3 font-semibold text-accent-secondary">
+                            {log.stage}
+                          </td>
+                          <td className="p-3 text-center">
+                            <Badge
+                              variant={
+                                log.level === "ERROR"
+                                  ? "danger"
+                                  : log.level === "WARN"
+                                  ? "warning"
+                                  : "success"
+                              }
+                            >
+                              {log.level}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-txt-primary font-sans font-medium">
+                            {log.operation}
+                          </td>
+                          <td className="p-3 text-right text-txt-muted whitespace-nowrap">
+                            {log.duration_ms !== undefined ? `${log.duration_ms} ms` : "--"}
+                          </td>
+                          <td className="p-3 text-txt-secondary max-w-xs truncate text-[10px]">
+                            {log.details ? JSON.stringify(log.details) : "--"}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Action Footer */}
+          <div className="p-4 rounded-xl border border-border bg-bg-card flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={() => setCurrentStep("4_HEURISTICS")}
+            >
+              Back to Overview
             </Button>
             <Button
               variant="primary"

@@ -251,8 +251,10 @@ export const ImprovementScreen: React.FC = () => {
       {!loading && !error && recs.length === 0 && (
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-8 text-center space-y-2">
           <CheckCircle2 className="h-10 w-10 text-emerald-400 mx-auto" />
-          <h3 className="font-bold text-txt-primary">Your dataset looks clean</h3>
-          <p className="text-sm text-txt-muted">No repairs recommended based on current analysis.</p>
+          <h3 className="font-bold text-txt-primary">No Actionable Improvements Identified</h3>
+          <p className="text-sm text-txt-muted max-w-lg mx-auto">
+            No actionable improvements were identified from the current audit evidence. The dataset exhibits good quality and low shortcut reliance across evaluated dimensions.
+          </p>
         </div>
       )}
 

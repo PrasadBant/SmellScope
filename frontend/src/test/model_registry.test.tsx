@@ -121,6 +121,16 @@ vi.mock("@/api/client", () => ({
       message: "Target dataset matches all 10 required features.",
     }),
     deleteModel: vi.fn().mockResolvedValue({ status: "deleted" }),
+    getAuditLogs: vi.fn().mockResolvedValue([
+      {
+        timestamp: new Date().toISOString(),
+        stage: "VALIDATION",
+        level: "INFO",
+        operation: "Schema and Topology Validation",
+        duration_ms: 12.5,
+        details: {},
+      },
+    ]),
   },
 }));
 

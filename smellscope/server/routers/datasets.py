@@ -15,10 +15,12 @@ import pandas as pd
 
 from smellscope.core.errors import E_FILE, E_LABEL_COLUMN, E_SCHEMA, SmellScopeError
 from smellscope.pipeline.loader import load_dataset
+from smellscope.pipeline.profile import compute_dataset_profile
 from smellscope.server.dependencies import dataset_registry
 from smellscope.server.schemas.models import (
     DatasetMetadataResponse,
     DatasetPreviewResponse,
+    DatasetProfileResponse,
     DatasetUploadResponse,
     DatasetValidateRequest,
     DatasetValidateResponse,
@@ -278,11 +280,22 @@ def validate_dataset(dataset_id: str, req: DatasetValidateRequest) -> DatasetVal
         df = loaded["df"]
         classes = sorted([str(c) for c in df[loaded["label_col"]].unique()])
         class_counts = {str(k): int(v) for k, v in df[loaded["label_col"]].value_counts().items()}
+        profile = compute_dataset_profile(loaded, dataset_id=dataset_id)
+
+        is_single_class = loaded.get("is_single_class", False) or (len(classes) == 1)
+        single_class_name = loaded.get("single_class_name") or (classes[0] if is_single_class else None)
 
         warnings = []
-        for c, cnt in class_counts.items():
-            if cnt < 10:
-                warnings.append(f"Class '{c}' has only {cnt} examples. Statistical heuristics may have low power.")
+        if is_single_class:
+            warnings.append(
+                f"Single-class dataset detected ('{single_class_name}'-only). "
+                "Data quality profiling ($S_{DQ}$) and distribution checks are AVAILABLE. "
+                "Supervised ML benchmark, SFI, GGI, and attack-specific heuristics are NOT APPLICABLE because no attack traffic is present."
+            )
+        else:
+            for c, cnt in class_counts.items():
+                if cnt < 10:
+                    warnings.append(f"Class '{c}' has only {cnt} examples. Statistical heuristics may have low power.")
 
         return DatasetValidateResponse(
             valid=True,
@@ -291,6 +304,11 @@ def validate_dataset(dataset_id: str, req: DatasetValidateRequest) -> DatasetVal
             class_counts=class_counts,
             column_roles=loaded.get("column_roles", {}),
             warnings=warnings,
+            is_single_class=is_single_class,
+            single_class_name=single_class_name,
+            supported_diagnostics=profile["supported_diagnostics"],
+            unsupported_diagnostics=profile["unsupported_diagnostics"],
+            capability_matrix=profile["capability_matrix"],
         )
     except SmellScopeError as sse:
         return DatasetValidateResponse(
@@ -300,6 +318,11 @@ def validate_dataset(dataset_id: str, req: DatasetValidateRequest) -> DatasetVal
             class_counts={},
             column_roles={},
             warnings=[f"{sse.code}: {sse.message}"],
+            is_single_class=False,
+            single_class_name=None,
+            supported_diagnostics=[],
+            unsupported_diagnostics={},
+            capability_matrix={},
         )
     except Exception as exc:
         return DatasetValidateResponse(
@@ -309,4 +332,32 @@ def validate_dataset(dataset_id: str, req: DatasetValidateRequest) -> DatasetVal
             class_counts={},
             column_roles={},
             warnings=[f"E_VALIDATION_ERROR: {str(exc)}"],
+            is_single_class=False,
+            single_class_name=None,
+            supported_diagnostics=[],
+            unsupported_diagnostics={},
+            capability_matrix={},
         )
+
+
+@router.get("/{dataset_id}/profile", response_model=DatasetProfileResponse)
+def get_dataset_profile(dataset_id: str) -> DatasetProfileResponse:
+    """Retrieve the authoritative 26-dimension dataset profile and capability matrix."""
+    ds = dataset_registry.get(dataset_id)
+    if not ds:
+        raw = dataset_registry.get_raw(dataset_id)
+        if not raw:
+            raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")
+        try:
+            target_path = Path(raw["path"])
+            loaded = load_dataset(str(target_path), label_col="Label", benign_label="BENIGN")
+            dataset_registry.register(dataset_id, loaded, name=raw.get("name"))
+            ds = loaded
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Dataset '{dataset_id}' requires validation before profiling: {exc}",
+            )
+
+    profile_dict = compute_dataset_profile(ds, dataset_id=dataset_id)
+    return DatasetProfileResponse(**profile_dict)
