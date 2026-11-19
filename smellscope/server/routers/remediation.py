@@ -39,6 +39,9 @@ def preview_remediation(run_id: str, req: RemediationPreviewRequest) -> Remediat
             feature_changes=preview["feature_changes"],
             expected_train_size=preview["expected_train_size"],
             rsm_report=preview["rsm_report"],
+            plan_hash=preview.get("plan_hash"),
+            base_view_hash=preview.get("base_view_hash"),
+            test_integrity=preview.get("test_integrity"),
         )
     except SmellScopeError as sse:
         raise HTTPException(
@@ -54,13 +57,14 @@ def apply_remediation_action(run_id: str, req: RemediationApplyRequest) -> Remed
         new_view, log_entry = remediation_session_manager.apply(
             preview_id=req.preview_id,
             approval=req.approval.model_dump(),
+            expected_plan_hash=req.plan_hash,
         )
         return RemediationApplyResponse(
             view=new_view,
             change_log_entry=log_entry,
         )
     except SmellScopeError as sse:
-        status_code = 403 if "BLOCK" in sse.code else 400
+        status_code = 403 if ("BLOCK" in sse.code or sse.code in ("E_TEST_INTEGRITY", "E_TEST_LEAK")) else 409 if sse.code == "E_STALE_PREVIEW" else 400
         raise HTTPException(
             status_code=status_code,
             detail={"code": sse.code, "message": sse.message, "details": sse.details},

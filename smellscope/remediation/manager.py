@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import uuid
@@ -15,6 +16,8 @@ from smellscope.core.audit import get_cluster_assignments
 from smellscope.core.errors import (
     E_CONFIG,
     E_ROLLBACK_MISMATCH,
+    E_STALE_PREVIEW,
+    E_TEST_INTEGRITY,
     E_RSM_BLOCK,
     E_RSM_WARN_UNACKED,
     E_RULE_UNAVAILABLE,
@@ -34,6 +37,173 @@ def _compute_view_hash(included_ids: List[int], excluded_features: List[str], sp
     hasher.update(b"|")
     hasher.update(",".join(sorted(excluded_features)).encode("utf-8"))
     return hasher.hexdigest()
+
+
+def compute_test_fingerprint(ds: Dict[str, Any], split: Dict[str, Any]) -> str:
+    """Fingerprint of the locked test partition: its row ids AND the content of those rows."""
+    ids = sorted(int(i) for i in split["test_ids"])
+    h = hashlib.sha256()
+    h.update(",".join(map(str, ids)).encode("utf-8"))
+    df = ds["df"]
+    rows = df[df["__row_id"].isin(set(ids))].sort_values("__row_id").reset_index(drop=True)
+    if len(rows):
+        h.update(pd.util.hash_pandas_object(rows, index=False).values.tobytes())
+    return h.hexdigest()
+
+
+def verify_test_integrity(
+    ds: Dict[str, Any],
+    split: Dict[str, Any],
+    expected_fingerprint: Optional[str] = None,
+    planned_train_ids: Optional[List[int]] = None,
+) -> Dict[str, Any]:
+    """Verify the locked test set is unchanged and that no planned training row is a test row.
+
+    This is deliberately separate from RSM: RSM judges training-data risk, this guards evaluation data.
+    """
+    current = compute_test_fingerprint(ds, split)
+    expected = expected_fingerprint or current
+    test_set = set(int(i) for i in split["test_ids"])
+    touched = [int(i) for i in (planned_train_ids or []) if int(i) in test_set]
+    fingerprint_ok = current == expected
+    ok = fingerprint_ok and not touched
+    if ok:
+        outcome = "Test records unchanged and excluded from every planned operation."
+    elif not fingerprint_ok:
+        outcome = "Test-set fingerprint mismatch: the locked test data changed since the preview."
+    else:
+        outcome = f"{len(touched)} planned operation row(s) belong to the locked test set."
+    return {
+        "status": "VERIFIED" if ok else "FAILED",
+        "original_fingerprint": expected,
+        "current_fingerprint": current,
+        "test_record_count": len(test_set),
+        "test_rows_touched": len(touched),
+        "verification_outcome": outcome,
+    }
+
+
+def compute_plan_hash(preview: Dict[str, Any]) -> str:
+    """Deterministic hash of exactly what a preview will do and which dataset version it targets."""
+    canonical = json.dumps(
+        {
+            "action": preview.get("action"),
+            "params": preview.get("params"),
+            "feature_changes": preview.get("feature_changes"),
+            "quarantined": preview.get("_quarantined_row_ids"),
+            "base_view_hash": preview.get("base_view_hash"),
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def assert_preview_current(
+    preview: Dict[str, Any],
+    view: Dict[str, Any],
+    expected_plan_hash: Optional[str] = None,
+) -> None:
+    """Reject previews that no longer describe the active dataset version or the approved plan."""
+    base = preview.get("base_view_hash")
+    if base is not None and base != view.get("view_hash"):
+        raise SmellScopeError(
+            code=E_STALE_PREVIEW,
+            message="This preview is stale: the dataset version changed after it was created. Generate a new preview and safety check.",
+            details={"preview_base_view": base, "active_view": view.get("view_hash")},
+        )
+    stored = preview.get("plan_hash")
+    if stored is not None and stored != compute_plan_hash(preview):
+        raise SmellScopeError(
+            code=E_STALE_PREVIEW,
+            message="The repair plan no longer matches the approved preview. Generate a new preview and safety check.",
+            details={"preview_id": preview.get("preview_id")},
+        )
+    if expected_plan_hash is not None and stored is not None and expected_plan_hash != stored:
+        raise SmellScopeError(
+            code=E_STALE_PREVIEW,
+            message="The submitted plan differs from the previewed plan. Generate a new preview and safety check.",
+            details={"preview_id": preview.get("preview_id")},
+        )
+
+
+def _composite_cluster_retention(
+    train_df: pd.DataFrame,
+    surviving_ids: set,
+    ds: Dict[str, Any],
+    split: Dict[str, Any],
+    classes: List[Any],
+    cfg: Optional[Dict[str, Any]],
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """Per attack class, per PDD cluster: rows before/after the plan (training rows only)."""
+    label_col = ds["label_col"]
+    benign_label = ds["benign_label"]
+    out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for c in classes:
+        if str(c) == benign_label:
+            continue
+        try:
+            clusters = get_cluster_assignments(
+                df=train_df, label_col=label_col, cls=str(c), benign_label=benign_label,
+                cfg=cfg or {}, seed=split.get("seed", 42),
+            )
+        except Exception:
+            continue
+        out[str(c)] = {}
+        for cl_id, b_cnt in clusters.value_counts().to_dict().items():
+            members = clusters.index[clusters == cl_id]
+            a_cnt = int(members.isin(surviving_ids).sum())
+            out[str(c)][str(cl_id)] = {
+                "before": int(b_cnt),
+                "after": a_cnt,
+                "retention": round(a_cnt / b_cnt, 4) if b_cnt else 1.0,
+            }
+    return out
+
+
+def build_rsm_record(
+    preview: Dict[str, Any],
+    rsm_report: Dict[str, Any],
+    approval: Dict[str, Any],
+    test_integrity: Dict[str, Any],
+    outcome: str,
+    transformation_id: Optional[str],
+    dataset_version: Optional[str],
+    actual_class_retention: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Authoritative safety record: the pre-application decision, independently repeated at apply."""
+    preview_decision = (preview.get("rsm_report") or {}).get("status", rsm_report["status"])
+    ack_required = rsm_report["status"] == "WARN"
+    acknowledged = bool(approval.get("warning_ack", False))
+    messages = {
+        "APPLIED": (
+            "Your improvement plan was applied after reviewing and acknowledging the safety warning."
+            if ack_required and acknowledged
+            else "Your improvement plan was applied after passing the required RSM checks."
+        ),
+        "NO_CHANGE": (
+            "RSM approved the proposed plan, but the transformation produced no actual dataset changes. "
+            "No new improved dataset version was created."
+        ),
+    }
+    return {
+        "preview_id": preview.get("preview_id"),
+        "transformation_id": transformation_id,
+        "dataset_version": dataset_version,
+        "preview_decision": preview_decision,
+        "apply_decision": rsm_report["status"],
+        "acknowledgement_required": ack_required,
+        "acknowledged": acknowledged,
+        "class_retention_expected": (rsm_report.get("checks") or {}).get("classes", []),
+        "class_retention_actual": actual_class_retention,
+        "cluster_retention": (rsm_report.get("checks") or {}).get("clusters", []),
+        "features_removed": (rsm_report.get("checks") or {}).get("features", {}),
+        "test_integrity": test_integrity,
+        "policy": rsm_report.get("policy"),
+        "outcome": outcome,
+        "message": messages.get(outcome, ""),
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def new_training_view(
@@ -274,6 +444,8 @@ def propose_remediation(
 
     preview: Dict[str, Any] = {
         "preview_id": preview_id,
+        "base_view_hash": view.get("view_hash"),
+        "test_integrity": verify_test_integrity(ds, split),
         "action": action,
         "params": params,
         "reason": reason,
@@ -289,6 +461,7 @@ def propose_remediation(
         },
     }
 
+    preview["plan_hash"] = compute_plan_hash(preview)
     preview["rsm_report"] = check_rsm(preview, policy=cfg.get("rsm", {}).get("policy") if cfg else None)
 
     return preview
@@ -301,11 +474,24 @@ def apply_remediation(
     preview: Dict[str, Any],
     approval: Dict[str, Any],
     cfg: Optional[Dict[str, Any]] = None,
+    expected_plan_hash: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Execute remediation and transition to a new immutable TrainingView.
 
     Enforces backend RSM safety authorization.
     """
+    # 0. Preview must describe the active dataset version, and the locked test set must be intact.
+    assert_preview_current(preview, view, expected_plan_hash)
+    pre_integrity = verify_test_integrity(
+        ds, split, expected_fingerprint=(preview.get("test_integrity") or {}).get("original_fingerprint")
+    )
+    if pre_integrity["status"] != "VERIFIED":
+        raise SmellScopeError(
+            code=E_TEST_INTEGRITY,
+            message=f"Locked test-set integrity check failed: {pre_integrity['verification_outcome']}",
+            details={"test_integrity": pre_integrity},
+        )
+
     # 1. Independent backend RSM validation
     rsm_report = check_rsm(preview, policy=cfg.get("rsm", {}).get("policy") if cfg else None)
 
@@ -407,6 +593,11 @@ def apply_remediation(
         "approval": approval,
         "parent_view_id": view["view_id"],
         "new_view_id": new_view_id,
+        "rsm_record": build_rsm_record(
+            preview, rsm_report, approval,
+            verify_test_integrity(ds, split, expected_fingerprint=pre_integrity["original_fingerprint"], planned_train_ids=new_train_ids),
+            outcome="APPLIED", transformation_id=entry_id, dataset_version=new_view_id,
+        ),
     }
 
     return new_view, change_log_entry
@@ -649,6 +840,7 @@ def generate_repair_plan_preview(
     view: Dict[str, Any],
     selected_recs: List[Dict[str, Any]],
     cfg: Optional[Dict[str, Any]] = None,
+    original_test_fingerprint: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Generate aggregate preview and RSM safety check for multiple selected repair operations.
 
@@ -747,6 +939,11 @@ def generate_repair_plan_preview(
         ret = (a_cnt / b_cnt) if b_cnt > 0 else 1.0
         by_class[str(c)] = {"before": b_cnt, "after": a_cnt, "retention": round(ret, 4)}
 
+    # Cluster retention is evaluated for real (previously this was always empty for composite plans).
+    by_cluster = _composite_cluster_retention(
+        train_df, set(surviving_train["__row_id"]), ds, split, classes, cfg
+    )
+
     # Data quality before and after metrics
     feature_cols = [c for c in df.columns if c not in (label_col, "__row_id")]
     missing_before = int(train_df[feature_cols].isna().sum().sum())
@@ -765,6 +962,12 @@ def generate_repair_plan_preview(
     preview: Dict[str, Any] = {
         "_quarantined_row_ids": sorted(int(i) for i in quarantined_row_ids),  # internal: exact rows to exclude on apply
         "preview_id": preview_id,
+        "base_view_hash": view.get("view_hash"),
+        "feature_counts": {
+            "original": len([c for c in df.columns if c not in (label_col, "__row_id")]) - len(view.get("excluded_features", [])),
+            "remaining": len([c for c in df.columns if c not in (label_col, "__row_id")]) - len(set(view.get("excluded_features", [])) | features_to_drop),
+        },
+        "test_integrity": verify_test_integrity(ds, split, expected_fingerprint=original_test_fingerprint),
         "action": "COMPOSITE_REPAIR_PLAN",
         "params": {
             "features_to_drop": features_changed_list,
@@ -778,7 +981,7 @@ def generate_repair_plan_preview(
         "affected": {
             "n_rows": affected_rows_count,
             "by_class": by_class,
-            "by_cluster": {},
+            "by_cluster": by_cluster,
         },
         "feature_changes": features_changed_list,
         "expected_train_size": {
@@ -794,6 +997,7 @@ def generate_repair_plan_preview(
     }
 
     # Execute RSM authorization
+    preview["plan_hash"] = compute_plan_hash(preview)
     preview["rsm_report"] = check_rsm(preview, policy=cfg.get("rsm", {}).get("policy") if cfg else None)
 
     return preview
@@ -807,12 +1011,26 @@ def apply_repair_plan(
     approval: Dict[str, Any],
     run_id: str,
     cfg: Optional[Dict[str, Any]] = None,
+    expected_plan_hash: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """Execute approved composite repair plan, transition TrainingView, and export versioned dataset.
 
     Returns:
         (new_view, change_log_entry, export_metadata)
     """
+    # 0. Preview must describe the active dataset version, and the locked test set must be intact.
+    #    These checks are independent of (and run before) the RSM decision: RSM PASS never overrides them.
+    assert_preview_current(preview, view, expected_plan_hash)
+    pre_integrity = verify_test_integrity(
+        ds, split, expected_fingerprint=(preview.get("test_integrity") or {}).get("original_fingerprint")
+    )
+    if pre_integrity["status"] != "VERIFIED":
+        raise SmellScopeError(
+            code=E_TEST_INTEGRITY,
+            message=f"Locked test-set integrity check failed: {pre_integrity['verification_outcome']}",
+            details={"test_integrity": pre_integrity},
+        )
+
     # 1. Independent backend RSM validation
     rsm_report = check_rsm(preview, policy=cfg.get("rsm", {}).get("policy") if cfg else None)
 
@@ -864,6 +1082,34 @@ def apply_repair_plan(
 
     # Verify locked test set is strictly untouched
     assert_test_untouched(split, new_train_ids)
+    post_integrity = verify_test_integrity(
+        ds, split, expected_fingerprint=pre_integrity["original_fingerprint"], planned_train_ids=new_train_ids
+    )
+    if post_integrity["status"] != "VERIFIED":
+        raise SmellScopeError(
+            code=E_TEST_INTEGRITY,
+            message=f"Locked test-set integrity check failed: {post_integrity['verification_outcome']}",
+            details={"test_integrity": post_integrity},
+        )
+
+    # The data state must match what was previewed (and what RSM evaluated).
+    expected_after = (preview.get("expected_train_size") or {}).get("after")
+    if expected_after is not None and expected_after != len(new_train_ids):
+        raise SmellScopeError(
+            code=E_STALE_PREVIEW,
+            message="The training data no longer matches the previewed state. Generate a new preview and safety check.",
+            details={"expected_rows": expected_after, "actual_rows": len(new_train_ids)},
+        )
+    new_train_set = set(new_train_ids)
+    actual_by_class: Dict[str, Any] = {}
+    train_label_series = df.loc[df["__row_id"].isin(set(current_train_ids)), [label_col, "__row_id"]]
+    for cls_value, grp in train_label_series.groupby(label_col):
+        before_n = len(grp)
+        after_n = int(grp["__row_id"].isin(new_train_set).sum())
+        actual_by_class[str(cls_value)] = {
+            "before": before_n, "after": after_n,
+            "retention": round(after_n / before_n, 4) if before_n else 1.0,
+        }
 
     # Compute new view hash
     split_hash = split["split_hash"]
@@ -942,8 +1188,13 @@ def apply_repair_plan(
     has_modifications = (n_rows_dropped > 0 or new_features_dropped > 0 or n_imputed > 0 or n_inf_cleaned > 0)
 
     if not has_modifications:
-        change_log_entry.update({"status": "NO_CHANGE", "view_id": view["view_id"]})
+        no_change_record = build_rsm_record(
+            preview, rsm_report, approval, post_integrity, outcome="NO_CHANGE",
+            transformation_id=None, dataset_version=None, actual_class_retention=actual_by_class,
+        )
+        change_log_entry.update({"status": "NO_CHANGE", "view_id": view["view_id"], "rsm_record": no_change_record})
         return view, change_log_entry, {
+            "rsm_record": no_change_record,
             "file_path": None,
             "filename": None,
             "sha256": view.get("view_hash"),
@@ -984,6 +1235,12 @@ def apply_repair_plan(
         "_repaired_file": str(export_csv_path),
     }
 
+    applied_record = build_rsm_record(
+        preview, rsm_report, approval, post_integrity, outcome="APPLIED",
+        transformation_id=entry_id, dataset_version=new_view_id, actual_class_retention=actual_by_class,
+    )
+    change_log_entry["rsm_record"] = applied_record
+
     export_metadata: Dict[str, Any] = {
         "file_path": str(export_csv_path.resolve()),
         "filename": export_csv_path.name,
@@ -993,6 +1250,7 @@ def apply_repair_plan(
         "view_id": new_view_id,
         "status": "MODIFIED",
         "outcome": "APPLIED",
+        "rsm_record": applied_record,
         "explanation": (
             f"Successfully applied repair plan: {preview.get('reason', 'repaired dataset')}"
             if has_modifications

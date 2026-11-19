@@ -47,8 +47,10 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     let errorDetail = "API Error";
+    let errorCode: string | undefined;
     try {
       const errJson = await res.json();
+      errorCode = errJson && typeof errJson.detail === "object" ? errJson.detail?.code : undefined;
       if (errJson && typeof errJson.detail === "object" && errJson.detail.message) {
         errorDetail = errJson.detail.message;
       } else if (errJson.message) {
@@ -61,7 +63,10 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     } catch {
       errorDetail = await res.text();
     }
-    throw new Error(errorDetail);
+    const failure: Error & { status?: number; code?: string } = new Error(errorDetail);
+    failure.status = res.status;
+    failure.code = errorCode;
+    throw failure;
   }
 
   return res.json();
@@ -136,10 +141,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ action, params }),
     }),
-  applyRemediation: (runId: string, previewId: string, approval: { approved: boolean; warning_ack: boolean; approved_at: string }) =>
+  applyRemediation: (runId: string, previewId: string, approval: { approved: boolean; warning_ack: boolean; approved_at: string }, planHash?: string) =>
     request<{ view: any; change_log_entry: any }>(`/audits/${runId}/remediations/apply`, {
       method: "POST",
-      body: JSON.stringify({ preview_id: previewId, approval }),
+      body: JSON.stringify({ preview_id: previewId, approval, plan_hash: planHash }),
     }),
   getRemediationViews: (runId: string) => request<ViewsResponse>(`/audits/${runId}/views`),
   rollback: (runId: string, targetEntryId: string) =>
@@ -175,11 +180,12 @@ export const api = {
       body: JSON.stringify({ selected_recs: selectedRecs }),
     }),
 
-  applyRepairPlan: (runId: string, previewId: string, approval: any) =>
+  applyRepairPlan: (runId: string, previewId: string, approval: any, planHash?: string) =>
     request<{ view: any; change_log_entry: any; export_metadata: any }>(`/audits/${runId}/repair-plan/apply`, {
       method: "POST",
-      body: JSON.stringify({ preview_id: previewId, approval }),
+      body: JSON.stringify({ preview_id: previewId, approval, plan_hash: planHash }),
     }),
+  getRsmRecords: (runId: string) => request<{ run_id: string; records: any[] }>(`/audits/${runId}/rsm-records`),
 
   getDatasetComparison: (runId: string, targetClass?: string) =>
     request<any>(`/audits/${runId}/comparison${targetClass ? `?target_class=${encodeURIComponent(targetClass)}` : ""}`),

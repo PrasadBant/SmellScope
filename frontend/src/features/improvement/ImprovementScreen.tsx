@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useAuditContext } from "@/stores/AuditContext";
+import { RsmSafetyCheck, RsmSafetyRecord, canApplyPlan } from "@/components/rsm/RsmSafetyCheck";
 import { api } from "@/api/client";
 import { cn } from "@/utils/cn";
 
@@ -160,22 +161,27 @@ export const ImprovementScreen: React.FC = () => {
         warning_ack: warningAck,
         approved_at: new Date().toISOString(),
       };
-      const res = await api.applyRepairPlan(activeRunId, previewData.preview_id, approval);
+      // The backend re-runs RSM and verifies this exact plan; the hash binds the request to what was previewed.
+      const res = await api.applyRepairPlan(activeRunId, previewData.preview_id, approval, previewData.plan_hash);
       setApplySuccess(res.export_metadata);
-      setShowPreviewModal(false);
-      setTimeout(() => navigate("/comparison"), 1500);
     } catch (e: any) {
-      setPreviewData((prev: any) => ({ ...prev, applyError: e.message }));
+      const rejected = e?.status === 403 || e?.status === 409;
+      setPreviewData((prev: any) => ({
+        ...prev,
+        applyError: e.message,
+        applyRejected: rejected,
+        applyRejectedCode: e?.code,
+      }));
     } finally {
       setApplyLoading(false);
     }
   };
 
-  const rsm = previewData?.rsm_report || {};
-  const rsmStatus: string = rsm.status || "SAFE";
-  const isBlocked = rsmStatus === "BLOCK";
-  const isWarn = rsmStatus === "WARN";
-  const canApply = !isBlocked && (!isWarn || warningAck);
+  const rsm = previewData?.rsm_report;
+  const rsmStatus: string | undefined = rsm?.status;
+  const canApply = canApplyPlan(rsm, warningAck, previewData?.test_integrity);
+  const applyLabel =
+    rsmStatus === "PASS" ? "Continue to Apply Improvements" : rsmStatus === "WARN" ? "Apply Despite Warnings" : "Apply Disabled — Plan Blocked";
 
   const grouped = recs.reduce<Record<string, Rec[]>>((acc, r) => {
     (acc[r.category] = acc[r.category] || []).push(r);
@@ -225,17 +231,18 @@ export const ImprovementScreen: React.FC = () => {
       </div>
 
       {/* Apply Success Banner */}
-      {applySuccess && (
+      {applySuccess && !showPreviewModal && (
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 flex items-center gap-3">
           <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
           <div>
-            <p className="text-sm font-bold text-emerald-300">Repairs Applied Successfully</p>
-            <p className="text-xs text-txt-muted mt-0.5">
-              {applySuccess.filename} · {applySuccess.total_rows} rows · SHA-256:{" "}
-              {applySuccess.sha256?.slice(0, 16)}…
+            <p className="text-sm font-bold text-emerald-300">
+              {applySuccess.outcome === "NO_CHANGE" ? "No dataset changes were made" : "Improvements applied"}
             </p>
+            <p className="text-xs text-txt-muted mt-0.5">{applySuccess.explanation}</p>
           </div>
-          <span className="ml-auto text-xs text-txt-muted">Navigating to Comparison…</span>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => navigate("/comparison")}>
+            View before and after comparison
+          </Button>
         </div>
       )}
 
@@ -486,36 +493,12 @@ export const ImprovementScreen: React.FC = () => {
 
               {!previewLoading && previewData && !previewData.error && (
                 <>
-                  {/* RSM Status Banner */}
-                  <div
-                    className={cn(
-                      "rounded-xl border p-4 flex items-start gap-3",
-                      rsmStatus === "PASS" || rsmStatus === "SAFE"
-                        ? "border-emerald-500/40 bg-emerald-500/10"
-                        : rsmStatus === "WARN"
-                        ? "border-amber-500/40 bg-amber-500/10"
-                        : "border-red-500/40 bg-red-500/10"
-                    )}
-                  >
-                    {rsmStatus === "PASS" || rsmStatus === "SAFE" ? (
-                      <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
-                    ) : rsmStatus === "WARN" ? (
-                      <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-                    ) : (
-                      <XCircle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1 space-y-1">
-                      <p className="text-sm font-bold text-txt-primary">
-                        RSM Assessment: {rsmStatus}
-                      </p>
-                      {rsm.reason && <p className="text-xs text-txt-muted">{rsm.reason}</p>}
-                      {rsm.warnings?.map((w: any, i: number) => (
-                        <p key={i} className="text-xs text-amber-300">
-                          ⚠ {typeof w === "string" ? w : w.message || JSON.stringify(w)}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
+                  <RsmSafetyCheck
+                    report={rsm}
+                    testIntegrity={previewData.test_integrity}
+                    acknowledged={warningAck}
+                    onAcknowledgedChange={setWarningAck}
+                  />
 
                   {/* Data Quality Delta */}
                   {previewData.data_quality_delta && (
@@ -544,27 +527,6 @@ export const ImprovementScreen: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Affected rows by class */}
-                  {previewData.affected_rows_by_class && Object.keys(previewData.affected_rows_by_class).length > 0 && (
-                    <div className="rounded-xl border border-border bg-bg-elevated/60 p-4 space-y-3">
-                      <h3 className="text-xs font-bold text-txt-primary uppercase tracking-wide">Affected Rows by Class</h3>
-                      <div className="space-y-1.5">
-                        {Object.entries(previewData.affected_rows_by_class as Record<string, any>).map(([cls, count]) => {
-                          const display =
-                            typeof count === "object" && count !== null
-                              ? `${count.after ?? count.before} rows${count.retention !== undefined ? ` (${(count.retention * 100).toFixed(0)}% retained)` : ""}`
-                              : `${count} rows`;
-                          return (
-                            <div key={cls} className="flex items-center justify-between text-xs">
-                              <span className="text-txt-secondary font-mono">{cls}</span>
-                              <span className="text-txt-muted">{display}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
                   {/* Training size */}
                   {previewData.expected_train_size !== undefined && (
                     <p className="text-xs text-txt-muted">
@@ -578,59 +540,53 @@ export const ImprovementScreen: React.FC = () => {
                     </p>
                   )}
 
-                  {/* Warning Ack */}
-                  {isWarn && (
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={warningAck}
-                        onChange={(e) => setWarningAck(e.target.checked)}
-                        className="mt-0.5 h-4 w-4 accent-amber-400"
-                      />
-                      <span className="text-xs text-amber-300 leading-relaxed">
-                        I acknowledge the RSM warnings and accept responsibility for this repair decision.
-                      </span>
-                    </label>
-                  )}
-
-                  {/* Block reason */}
-                  {isBlocked && (
-                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
-                      <p className="text-xs text-red-300 font-medium">
-                        ✕ This repair plan has been blocked by RSM. No changes will be applied.
-                      </p>
-                      {rsm.block_reason && (
-                        <p className="text-xs text-red-400 mt-1">{rsm.block_reason}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Apply Error */}
+                  {/* Apply Error / rejection recorded by the backend */}
                   {previewData.applyError && (
-                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 space-y-1" role="alert" data-testid="apply-error">
+                      {previewData.applyRejected && (
+                        <p className="text-xs font-bold text-red-300">
+                          {previewData.applyRejectedCode === "E_STALE_PREVIEW"
+                            ? "This preview is out of date. Generate a new preview and safety check."
+                            : "Your proposed improvement was not applied because it violated the safety policy."}
+                        </p>
+                      )}
                       <p className="text-xs text-red-300">{previewData.applyError}</p>
                     </div>
                   )}
 
+                  {/* Result: authoritative safety record */}
+                  {applySuccess?.rsm_record && (
+                    <>
+                      <RsmSafetyRecord record={applySuccess.rsm_record} />
+                      <div className="flex justify-end gap-3">
+                        <Button variant="ghost" onClick={() => setShowPreviewModal(false)}>
+                          Close
+                        </Button>
+                        <Button variant="primary" onClick={() => navigate("/comparison")} data-testid="goto-comparison">
+                          View before and after comparison
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
                   {/* Actions */}
-                  <div className="flex justify-end gap-3 pt-2">
-                    <Button variant="ghost" onClick={() => setShowPreviewModal(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="primary"
-                      disabled={!canApply || applyLoading}
-                      onClick={handleApply}
-                      className="gap-2"
-                    >
-                      {applyLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="h-4 w-4" />
-                      )}
-                      Approve & Apply Fixes
-                    </Button>
-                  </div>
+                  {!applySuccess && (
+                    <div className="flex flex-wrap justify-end gap-3 pt-2">
+                      <Button variant="ghost" onClick={() => setShowPreviewModal(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="primary"
+                        disabled={!canApply || applyLoading}
+                        onClick={handleApply}
+                        className="gap-2"
+                        title={canApply ? undefined : rsmStatus === "BLOCK" ? "Blocked by the Remediation Safety Monitor" : "Acknowledge the warnings to continue"}
+                      >
+                        {applyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                        {applyLabel}
+                      </Button>
+                    </div>
+                  )}
                 </>
               )}
             </div>

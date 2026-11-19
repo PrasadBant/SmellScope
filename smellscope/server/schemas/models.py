@@ -238,6 +238,9 @@ class RemediationPreviewResponse(BaseModel):
     feature_changes: List[str]
     expected_train_size: Dict[str, int]
     rsm_report: Dict[str, Any]
+    plan_hash: Optional[str] = None
+    base_view_hash: Optional[str] = None
+    test_integrity: Optional[Dict[str, Any]] = None
 
 
 class RemediationApproval(BaseModel):
@@ -249,6 +252,7 @@ class RemediationApproval(BaseModel):
 class RemediationApplyRequest(BaseModel):
     preview_id: str
     approval: RemediationApproval
+    plan_hash: Optional[str] = None
 
 
 class TrainingViewSchema(BaseModel):
@@ -372,11 +376,16 @@ class RepairPlanPreviewResponse(BaseModel):
     expected_train_size: Any = None
     data_quality_delta: Optional[Dict[str, Any]] = None
     rsm_report: Optional[Dict[str, Any]] = None
+    plan_hash: Optional[str] = None
+    base_view_hash: Optional[str] = None
+    feature_counts: Optional[Dict[str, Any]] = None
+    test_integrity: Optional[Dict[str, Any]] = None
 
 
 class RepairPlanApplyRequest(BaseModel):
     preview_id: str
     approval: Dict[str, Any]
+    plan_hash: Optional[str] = None
 
 
 class RepairPlanApplyResponse(BaseModel):

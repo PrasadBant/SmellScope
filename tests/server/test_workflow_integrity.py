@@ -81,7 +81,7 @@ def test_preview_ignores_client_supplied_params_and_rejects_unknown_ids(audited_
     assert bad.status_code == 400
 
 
-def test_apply_creates_real_new_version_then_noop_is_truthful(audited_run):
+def test_apply_creates_real_new_version_and_preview_is_single_use(audited_run):
     run_id = audited_run["run_id"]
     rec = next(r for r in audited_run["recs"] if r["action_type"] == "FEATURE_ABLATION")
     prev = client.post(f"/api/v1/audits/{run_id}/repair-plan/preview", json={"selected_recs": [rec]}).json()
@@ -101,14 +101,13 @@ def test_apply_creates_real_new_version_then_noop_is_truthful(audited_run):
         assert feat not in header.split(","), "dropped feature must be absent from the exported dataset"
     views_after_first = client.get(f"/api/v1/audits/{run_id}/views").json()
 
-    # Applying the identical plan again changes nothing -> NO_CHANGE and no fabricated version/file.
+    # A preview authorises exactly one application: re-submitting it is rejected, never silently re-applied
+    # and never turned into a fabricated "success". (NO_CHANGE is covered in tests/test_rsm.py.)
     again = client.post(
         f"/api/v1/audits/{run_id}/repair-plan/apply",
         json={"preview_id": prev["preview_id"], "approval": APPROVAL},
     )
-    assert again.status_code == 200, again.text
-    assert again.json()["export_metadata"]["outcome"] == "NO_CHANGE"
-    assert again.json()["export_metadata"]["file_path"] is None
+    assert again.status_code in (400, 409), again.text
     assert client.get(f"/api/v1/audits/{run_id}/views").json() == views_after_first
 
 
@@ -172,5 +171,6 @@ def test_single_canonical_config_directory_has_merged_settings():
     cfg = load_config()
     assert cfg["runtime"]["degradation_enabled"] is True
     assert "E_RSM_BLOCK" in cfg["error_mappings"]
-    assert cfg["rsm"]["policy"]["warn_class_loss_pct"] == 0.10
+    assert cfg["rsm"]["policy"]["min_class_retention_warn"] == 0.50
+    assert cfg["rsm"]["policy"]["max_ablation_features_warn"] == 10
     assert cfg["config_hash"]

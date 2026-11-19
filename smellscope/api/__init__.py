@@ -185,9 +185,10 @@ def apply_remediation(
     preview: Dict[str, Any],
     approval: Dict[str, Any],
     cfg: Optional[Dict[str, Any]] = None,
+    expected_plan_hash: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Apply remediation authorized by RSM and advance to new TrainingView."""
-    return _apply_remediation(ds, split, view, preview, approval, cfg)
+    return _apply_remediation(ds, split, view, preview, approval, cfg, expected_plan_hash)
 
 
 def rollback(

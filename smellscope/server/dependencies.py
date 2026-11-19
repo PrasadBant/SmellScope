@@ -33,6 +33,8 @@ from smellscope.remediation.manager import (
     reaudit_view,
     train_view_dataframe,
     roles_for_frame,
+    compute_test_fingerprint,
+    verify_test_integrity,
 )
 from smellscope.core.errors import E_CONFIG, E_FILE, SmellScopeError
 
@@ -278,6 +280,8 @@ class RemediationSessionManager:
         self._exports: Dict[str, Dict[str, Any]] = {}  # run_id -> export metadata
         # Hash-keyed caches (view_hash changes whenever rows/features/transforms change)
         self._reaudits: Dict[tuple, Dict[str, Any]] = {}
+        self._test_fp: Dict[str, str] = {}  # run_id -> fingerprint of the locked test set at run initialisation
+        self._rsm_records: Dict[str, List[Dict[str, Any]]] = {}  # run_id -> chronological RSM safety events
         self._comparisons: Dict[tuple, Dict[str, Any]] = {}
 
     def _ensure_initialized(self, run_id: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
@@ -307,8 +311,19 @@ class RemediationSessionManager:
             root_view = new_training_view(ds, split)
             self._views[run_id] = [root_view]
             self._changelogs[run_id] = []
+            self._test_fp[run_id] = compute_test_fingerprint(ds, split)
+            self._rsm_records[run_id] = []
 
         return ds, split
+
+    def _log_rsm(self, run_id: str, event: Dict[str, Any]) -> None:
+        event.setdefault("recorded_at", datetime.now(timezone.utc).isoformat())
+        self._rsm_records.setdefault(run_id, []).append(event)
+
+    def get_rsm_records(self, run_id: str) -> List[Dict[str, Any]]:
+        with self._lock:
+            self._ensure_initialized(run_id)
+            return list(self._rsm_records.get(run_id, []))
 
     def get_views(self, run_id: str) -> List[Dict[str, Any]]:
         with self._lock:
@@ -335,15 +350,22 @@ class RemediationSessionManager:
                 view=active_view,
                 options={"action": action, "params": params},
             )
+            preview["test_integrity"] = verify_test_integrity(
+                ds, split, expected_fingerprint=self._test_fp.get(run_id)
+            )
             rsm_report = check_rsm(preview)
             preview["rsm_report"] = rsm_report
             self._previews[preview["preview_id"]] = {
                 "run_id": run_id,
                 "preview": preview,
             }
+            self._log_rsm(run_id, {
+                "event": "PREVIEW", "preview_id": preview["preview_id"], "decision": rsm_report["status"],
+                "view_hash": active_view.get("view_hash"),
+            })
             return preview
 
-    def apply(self, preview_id: str, approval: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    def apply(self, preview_id: str, approval: Dict[str, Any], expected_plan_hash: Optional[str] = None) -> tuple[Dict[str, Any], Dict[str, Any]]:
         with self._lock:
             stored = self._previews.get(preview_id)
             if not stored:
@@ -357,15 +379,26 @@ class RemediationSessionManager:
             ds, split = self._ensure_initialized(run_id)
             active_view = self._views[run_id][-1]
 
-            new_view, log_entry = apply_remediation(
-                ds=ds,
-                split=split,
-                view=active_view,
-                preview=preview,
-                approval=approval,
-            )
+            try:
+                new_view, log_entry = apply_remediation(
+                    ds=ds,
+                    split=split,
+                    view=active_view,
+                    preview=preview,
+                    approval=approval,
+                    expected_plan_hash=expected_plan_hash,
+                )
+            except SmellScopeError as exc:
+                self._log_rsm(run_id, {
+                    "event": "APPLY_REJECTED", "preview_id": preview_id, "outcome": exc.code,
+                    "message": exc.message, "preview_decision": (preview.get("rsm_report") or {}).get("status"),
+                    "acknowledged": bool(approval.get("warning_ack", False)),
+                })
+                raise
             self._views[run_id].append(new_view)
             self._changelogs[run_id].append(log_entry)
+            self._previews.pop(preview_id, None)  # a preview authorises exactly one application
+            self._log_rsm(run_id, {"event": "APPLIED", "preview_id": preview_id, **log_entry.get("rsm_record", {})})
             return new_view, log_entry
 
     def rollback_to(self, run_id: str, target_entry_id: str) -> Dict[str, Any]:
@@ -451,14 +484,19 @@ class RemediationSessionManager:
                 split=split,
                 view=active_view,
                 selected_recs=resolved,
+                original_test_fingerprint=self._test_fp.get(run_id),
             )
             self._previews[preview["preview_id"]] = {
                 "run_id": run_id,
                 "preview": preview,
             }
+            self._log_rsm(run_id, {
+                "event": "PREVIEW", "preview_id": preview["preview_id"], "decision": preview["rsm_report"]["status"],
+                "view_hash": active_view.get("view_hash"), "plan_hash": preview.get("plan_hash"),
+            })
             return preview
 
-    def apply_repair_plan_action(self, preview_id: str, approval: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    def apply_repair_plan_action(self, preview_id: str, approval: Dict[str, Any], expected_plan_hash: Optional[str] = None) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         with self._lock:
             stored = self._previews.get(preview_id)
             if not stored:
@@ -472,20 +510,32 @@ class RemediationSessionManager:
             ds, split = self._ensure_initialized(run_id)
             active_view = self._views[run_id][-1]
 
-            new_view, log_entry, export_meta = apply_repair_plan(
-                ds=ds,
-                split=split,
-                view=active_view,
-                preview=preview,
-                approval=approval,
-                run_id=run_id,
-            )
+            try:
+                new_view, log_entry, export_meta = apply_repair_plan(
+                    ds=ds,
+                    split=split,
+                    view=active_view,
+                    preview=preview,
+                    approval=approval,
+                    run_id=run_id,
+                    expected_plan_hash=expected_plan_hash,
+                )
+            except SmellScopeError as exc:
+                self._log_rsm(run_id, {
+                    "event": "APPLY_REJECTED", "preview_id": preview_id, "outcome": exc.code,
+                    "message": exc.message, "preview_decision": (preview.get("rsm_report") or {}).get("status"),
+                    "acknowledged": bool(approval.get("warning_ack", False)),
+                })
+                raise
             if export_meta.get("outcome") == "NO_CHANGE":
                 # Truthful no-op: do not fabricate a new dataset version or overwrite a real export.
+                self._log_rsm(run_id, {"event": "NO_CHANGE", "preview_id": preview_id, **export_meta.get("rsm_record", {})})
                 return new_view, log_entry, export_meta
             self._views[run_id].append(new_view)
             self._changelogs[run_id].append(log_entry)
             self._exports[run_id] = export_meta
+            self._previews.pop(preview_id, None)  # a preview authorises exactly one application
+            self._log_rsm(run_id, {"event": "APPLIED", "preview_id": preview_id, **export_meta.get("rsm_record", {})})
             return new_view, log_entry, export_meta
 
     def _get_reaudit(self, run_id: str, ds: Dict[str, Any], split: Dict[str, Any], view: Dict[str, Any]) -> Optional[Dict[str, Any]]:

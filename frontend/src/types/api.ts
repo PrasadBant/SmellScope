@@ -340,10 +340,13 @@ export interface FragilityGridResponse {
 
 export interface RSMReport {
   status: "PASS" | "WARN" | "BLOCK";
-  warnings: { code: string; class: string | null; message: string }[];
-  blocks: { code: string; class: string | null; message: string }[];
+  warnings: { code: string; class: string | null; message: string; title?: string; explanation?: string; evidence?: Record<string, any> }[];
+  blocks: { code: string; class: string | null; message: string; title?: string; explanation?: string; evidence?: Record<string, any> }[];
   impact: Record<string, any>;
   policy: Record<string, any>;
+  requires_acknowledgement?: boolean;
+  summary?: string;
+  checks?: Record<string, any>;
 }
 
 export interface RemediationPreview {
@@ -362,6 +365,9 @@ export interface RemediationPreview {
     after: number;
   };
   rsm_report: RSMReport;
+  plan_hash?: string | null;
+  base_view_hash?: string | null;
+  test_integrity?: Record<string, any> | null;
 }
 
 export interface TrainingView {
