@@ -23,4 +23,6 @@ runs/
 /reports/
 data/uploads/
 data/repaired/*.csv
+data/models/*
+!data/models/.gitkeep
 master_prompt.md

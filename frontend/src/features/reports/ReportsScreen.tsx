@@ -12,6 +12,9 @@ import {
   ArrowRight,
   RefreshCw,
   ExternalLink,
+  PackageCheck,
+  FileArchive,
+  Database,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -39,6 +42,11 @@ export const ReportsScreen: React.FC = () => {
   const [reportLoading, setReportLoading] = useState(false);
   const [generatedReport, setGeneratedReport] = useState<ReportGenerateResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [persistedModels, setPersistedModels] = useState<any[]>([]);
+
+  useEffect(() => {
+    api.listModels().then(setPersistedModels).catch(() => {});
+  }, []);
 
   // Auto-run rebenchmark if remediation was applied and not skipped
   useEffect(() => {
@@ -396,6 +404,71 @@ export const ReportsScreen: React.FC = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Persisted Model Artifacts & Training Bundles (Phase 13) */}
+          {persistedModels.length > 0 && (
+            <Card className="border-accent-primary/40 bg-bg-card">
+              <CardHeader className="py-3 px-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <PackageCheck className="h-5 w-5 text-accent-secondary" />
+                    <div>
+                      <CardTitle className="text-sm font-bold text-txt-primary">
+                        Persisted Models & Reusable Training Bundles
+                      </CardTitle>
+                      <CardDescription>
+                        Self-contained reproducibility archives with datasets, code manifests, and model binaries.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {persistedModels.length} Model{persistedModels.length > 1 ? "s" : ""} Available
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                {persistedModels.map((m) => (
+                  <div
+                    key={m.model_id}
+                    className="p-3.5 rounded-lg border border-border bg-bg-elevated/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-txt-primary font-mono">{m.model_name}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-bg-card border border-border text-txt-muted">
+                          {m.model_id}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-txt-muted">
+                        Algorithm: {m.algorithm} · Training Rows: {m.provenance?.n_train_rows || "N/A"} · Features: {m.schema?.feature_count || "N/A"}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="gap-1.5 text-xs"
+                        onClick={() => window.open(api.getModelBundleUrl(m.model_id), "_blank")}
+                      >
+                        <FileArchive className="h-3.5 w-3.5" />
+                        Download Bundle (.zip)
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs"
+                        onClick={() => window.open(api.getModelDownloadUrl(m.model_id), "_blank")}
+                      >
+                        <Download className="h-3 w-3" />
+                        Model (.joblib)
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>

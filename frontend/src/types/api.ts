@@ -95,12 +95,55 @@ export interface PaperHeuristics {
   details: Record<string, any>;
 }
 
+export interface PartitionMetrics {
+  accuracy: number | null;
+  macro_f1: number | null;
+  weighted_f1: number | null;
+  precision: number | null;
+  recall: number | null;
+  fpr: number | null;
+  fnr: number | null;
+  tpr: number | null;
+  tnr: number | null;
+  roc_auc: number | null;
+  pr_auc: number | null;
+  confusion_matrix: number[][] | null;
+  per_class?: Record<string, { recall: number | null; precision: number | null; f1: number | null; n: number }>;
+}
+
+export interface InspectionDimension {
+  status: "PASS" | "NORMAL" | "CONCERN" | "CRITICAL";
+  detail: string;
+  [key: string]: any;
+}
+
+export interface PerfectAccuracyInvestigation {
+  triggered: boolean;
+  case: "CASE_A" | "CASE_B" | "CASE_C" | "CASE_D" | "CASE_E";
+  case_title: string;
+  description: string;
+  recommendation: string;
+  findings: string[];
+  areas_evaluated: Record<string, InspectionDimension>;
+}
+
 export interface BaselineMetrics {
   acc: number | null;
   f1: number | null;
   tpr: number | null;
   tnr: number | null;
+  fpr?: number | null;
+  fnr?: number | null;
+  precision?: number | null;
+  weighted_f1?: number | null;
+  roc_auc?: number | null;
+  pr_auc?: number | null;
+  confusion_matrix?: number[][] | null;
   n_test: number | null;
+  train?: PartitionMetrics;
+  val?: PartitionMetrics;
+  test?: PartitionMetrics;
+  perfect_accuracy_investigation?: PerfectAccuracyInvestigation | null;
 }
 
 export interface SfiFragilityCurve {
@@ -291,4 +334,55 @@ export interface ReportGenerateResponse {
   created_at: string;
   download_url: string;
   file_path: string;
+}
+
+export interface ModelMetadata {
+  model_id: string;
+  model_name: string;
+  created_at: string;
+  algorithm: string;
+  model_sha256: string;
+  preprocessor_sha256: string;
+  provenance: {
+    run_id: string;
+    original_dataset_id: string;
+    view_id: string;
+    parent_view_id?: string;
+    n_train_rows: number;
+    n_features: number;
+    target_class?: string;
+    rebenchmark_metrics?: any;
+    [key: string]: any;
+  };
+  schema: {
+    feature_count: number;
+    feature_names: string[];
+    feature_dtypes: Record<string, string>;
+    label_column: string;
+    classes: string[];
+  };
+  hyperparameters: Record<string, any>;
+  metrics: Record<string, any>;
+  environment: Record<string, string>;
+}
+
+export interface ModelCompatibilityResponse {
+  compatible: boolean;
+  checks: {
+    feature_count_match: boolean;
+    missing_features: string[];
+    extra_features: string[];
+    dtype_mismatches: Record<string, { expected: string; actual: string }>;
+    label_column_found: boolean;
+  };
+  message: string;
+}
+
+export interface ModelPredictResponse {
+  model_id: string;
+  predictions: (string | number)[];
+  probabilities?: number[][];
+  sample_count: number;
+  class_names: string[];
+  label_col: string;
 }

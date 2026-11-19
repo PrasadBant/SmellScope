@@ -455,6 +455,24 @@ def rollback(
     return parent_view
 
 
+# Global in-memory storage for active trained models (separated from Pydantic view dicts)
+_ACTIVE_TRAINED_MODELS: Dict[str, Dict[str, Any]] = {}
+
+
+def get_active_trained_model(run_id: str, view_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve in-memory trained model artifacts for a given run and view."""
+    if view_id:
+        key = f"{run_id}_{view_id}"
+        if key in _ACTIVE_TRAINED_MODELS:
+            return _ACTIVE_TRAINED_MODELS[key]
+
+    # Search for latest model matching run_id
+    matches = [k for k in _ACTIVE_TRAINED_MODELS if k.startswith(f"{run_id}_")]
+    if matches:
+        return _ACTIVE_TRAINED_MODELS[matches[-1]]
+    return None
+
+
 def rebenchmark(
     ds: Dict[str, Any],
     split: Dict[str, Any],
@@ -462,6 +480,7 @@ def rebenchmark(
     remediated_view: Dict[str, Any],
     cfg: Optional[Dict[str, Any]] = None,
     target_class: Optional[str] = None,
+    run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Re-benchmark model on locked test set before and after remediation.
 
@@ -476,6 +495,10 @@ def rebenchmark(
     # Test set rows
     test_ids = set(split["test_ids"])
     test_df = df[df["__row_id"].isin(test_ids)].copy()
+
+    val_ids = set(split.get("val_ids", []))
+    orig_val_df = df[df["__row_id"].isin(val_ids)].copy() if val_ids else None
+    rem_val_df = df[df["__row_id"].isin(val_ids)].copy() if val_ids else None
 
     # Original train rows & features
     orig_train_ids = set(original_view["_included_row_ids"])
@@ -501,6 +524,8 @@ def rebenchmark(
             rem_train_df[col] = rem_train_df[col].fillna(med)
         if col in rem_test_df.columns:
             rem_test_df[col] = rem_test_df[col].fillna(med)
+        if rem_val_df is not None and col in rem_val_df.columns:
+            rem_val_df[col] = rem_val_df[col].fillna(med)
 
     clean_inf_cols = remediated_view.get("_clean_inf_cols", [])
     for col in clean_inf_cols:
@@ -512,32 +537,68 @@ def rebenchmark(
                 rem_train_df[col] = rem_train_df[col].replace([np.inf], cap_max).replace([-np.inf], cap_min)
                 if col in rem_test_df.columns:
                     rem_test_df[col] = rem_test_df[col].replace([np.inf], cap_max).replace([-np.inf], cap_min)
+                if rem_val_df is not None and col in rem_val_df.columns:
+                    rem_val_df[col] = rem_val_df[col].replace([np.inf], cap_max).replace([-np.inf], cap_min)
 
     rem_features = [f for f in all_features if f not in remediated_view["excluded_features"]]
 
     # Evaluate before
+    before_cfg = dict(cfg) if cfg else {}
+    if orig_val_df is not None:
+        before_cfg["val_df"] = orig_val_df
     eval_before = fit_and_evaluate(
         train_df=orig_train_df,
         test_df=test_df,
         label_col=label_col,
         benign_label=benign_label,
         feature_cols=orig_features,
-        cfg=cfg,
+        cfg=before_cfg,
         seed=seed,
         target_class=target_class,
     )
 
-    # Evaluate after
-    eval_after = fit_and_evaluate(
+    # Evaluate after (request estimator and preprocessor for persistence)
+    after_cfg = dict(cfg) if cfg else {}
+    after_cfg["return_estimator"] = True
+    if rem_val_df is not None:
+        after_cfg["val_df"] = rem_val_df
+    eval_after_raw = fit_and_evaluate(
         train_df=rem_train_df,
         test_df=rem_test_df,
         label_col=label_col,
         benign_label=benign_label,
         feature_cols=rem_features,
-        cfg=cfg,
+        cfg=after_cfg,
         seed=seed,
         target_class=target_class,
     )
+
+    # Extract clean serializable eval_after
+    estimator = eval_after_raw.pop("_estimator", None)
+    preprocessor = eval_after_raw.pop("_preprocessor", None)
+    clean_features = eval_after_raw.pop("_clean_features", rem_features)
+    eval_after = eval_after_raw
+
+    # Store trained artifacts for ModelRegistry saving
+    effective_run_id = run_id or remediated_view.get("run_id") or "active_run"
+    view_id = remediated_view.get("view_id", "view_0001")
+    model_key = f"{effective_run_id}_{view_id}"
+    _ACTIVE_TRAINED_MODELS[model_key] = {
+        "model": estimator,
+        "preprocessor": preprocessor,
+        "feature_cols": clean_features,
+        "label_col": label_col,
+        "benign_label": benign_label,
+        "metrics": eval_after,
+        "dataset_id": ds.get("dataset_id") or ds.get("meta", {}).get("source_basename", "dataset"),
+        "dataset_fingerprint": ds.get("meta", {}).get("sha256", ""),
+        "run_id": effective_run_id,
+        "view_id": view_id,
+        "train_df": rem_train_df,
+        "test_df": rem_test_df,
+        "split_manifest": split,
+        "remediated_view": remediated_view,
+    }
 
     def _calc_delta(a: Optional[float], b: Optional[float]) -> Optional[float]:
         if a is None or b is None:
@@ -551,6 +612,8 @@ def rebenchmark(
         "weighted_f1": _calc_delta(eval_before.get("weighted_f1"), eval_after.get("weighted_f1")),
         "tpr": _calc_delta(eval_before.get("tpr"), eval_after.get("tpr")),
         "tnr": _calc_delta(eval_before.get("tnr"), eval_after.get("tnr")),
+        "fpr": _calc_delta(eval_before.get("fpr"), eval_after.get("fpr")),
+        "fnr": _calc_delta(eval_before.get("fnr"), eval_after.get("fnr")),
     }
 
     result: Dict[str, Any] = {
@@ -566,6 +629,7 @@ def rebenchmark(
         "ci95": {"f1_before": None, "f1_after": None},
         "n_repeats": 1,
         "seed": seed,
+        "model_key": model_key,
     }
 
     return result

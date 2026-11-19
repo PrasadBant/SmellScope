@@ -15,6 +15,7 @@ from smellscope.core.heuristics import (
     compute_hdf,
     compute_pdd_and_tc,
 )
+from smellscope.core.perfect_accuracy import investigate_perfect_accuracy
 from smellscope.core.preprocess import fit_preprocessor
 from smellscope.core.sfi import compute_sfi
 
@@ -93,8 +94,10 @@ def audit_class(
 
     # Preprocess train/test views for heuristics
     train_ids = set(split["train_ids"])
+    val_ids = set(split.get("val_ids", []))
     test_ids = set(split["test_ids"])
     train_df = df[df["__row_id"].isin(train_ids)].copy()
+    val_df = df[df["__row_id"].isin(val_ids)].copy() if len(val_ids) > 0 else None
     test_df = df[df["__row_id"].isin(test_ids)].copy()
 
     prep = fit_preprocessor(train_df, feature_cols=feature_cols, cfg=cfg)
@@ -169,22 +172,49 @@ def audit_class(
         na_reasons["paper.PDD"] = f"Failed to compute PDD/TC: {e}"
         na_reasons["paper.TC"] = f"Failed to compute PDD/TC: {e}"
 
-    # 5. Baseline Evaluation
+    # 5. Baseline Evaluation across train, val, and locked test partitions
     baseline_res: dict[str, Any] = {
         "acc": None,
         "f1": None,
         "tpr": None,
         "tnr": None,
+        "fpr": None,
+        "fnr": None,
+        "precision": None,
+        "weighted_f1": None,
+        "roc_auc": None,
+        "pr_auc": None,
+        "confusion_matrix": None,
+        "per_class": {},
+        "train": {},
+        "val": {},
+        "test": {},
+        "perfect_accuracy_investigation": None,
         "n_test": len(test_df[test_df[label_col].isin([cls, benign_label])]),
     }
     try:
+        eval_cfg = dict(cfg) if cfg else {}
+        if val_df is not None:
+            eval_cfg["val_df"] = val_df
         raw_eval = fit_and_evaluate(
-            train_df, test_df, label_col, benign_label, feature_cols, cfg, seed=seed, target_class=cls
+            train_df, test_df, label_col, benign_label, feature_cols, eval_cfg, seed=seed,
+            target_class=cls
         )
         baseline_res["acc"] = raw_eval.get("acc")
         baseline_res["f1"] = raw_eval.get("f1")
         baseline_res["tpr"] = raw_eval.get("tpr")
         baseline_res["tnr"] = raw_eval.get("tnr")
+        baseline_res["fpr"] = raw_eval.get("fpr")
+        baseline_res["fnr"] = raw_eval.get("fnr")
+        baseline_res["precision"] = raw_eval.get("precision")
+        baseline_res["weighted_f1"] = raw_eval.get("weighted_f1")
+        baseline_res["roc_auc"] = raw_eval.get("roc_auc")
+        baseline_res["pr_auc"] = raw_eval.get("pr_auc")
+        baseline_res["confusion_matrix"] = raw_eval.get("confusion_matrix")
+        baseline_res["per_class"] = raw_eval.get("per_class", {})
+        baseline_res["train"] = raw_eval.get("train", {})
+        baseline_res["val"] = raw_eval.get("val", {})
+        baseline_res["test"] = raw_eval.get("test", {})
     except Exception as e:
         na_reasons["baseline"] = f"Failed to compute baseline evaluation: {e}"
 
@@ -242,6 +272,28 @@ def audit_class(
             "group_sizes": [],
             "lor_threshold": 0.95,
         }
+
+    # 8. 100% Accuracy & Baseline Verification Investigation (Phase 6)
+    try:
+        perf_acc_investigation = investigate_perfect_accuracy(
+            df=df,
+            label_col=label_col,
+            cls=cls,
+            benign_label=benign_label,
+            split=split,
+            feature_cols=feature_cols,
+            train_eval=baseline_res.get("train", {}),
+            val_eval=baseline_res.get("val", {}),
+            test_eval=baseline_res.get("test", baseline_res),
+            sfi_result=sfi_res,
+            ggi_result=ggi_res,
+            ugt_score=ugt_score,
+            cfg=cfg,
+            seed=seed,
+        )
+        baseline_res["perfect_accuracy_investigation"] = perf_acc_investigation
+    except Exception as e:
+        na_reasons["perfect_accuracy_investigation"] = f"Failed to investigate accuracy: {e}"
 
     result: dict[str, Any] = {
         "class": cls,

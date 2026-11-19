@@ -47,7 +47,7 @@ export const FindingsScreen: React.FC = () => {
     isHydrating,
   } = useAuditContext();
 
-  const [activeTab, setActiveTab] = useState<"overview" | "class_deepdive" | "recommendations">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "class_deepdive" | "heatmaps" | "recommendations">("overview");
   const [scoresData, setScoresData] = useState<any | null>(null);
   const [loadingScores, setLoadingScores] = useState<boolean>(false);
   const [showBreakdown, setShowBreakdown] = useState<boolean>(false);
@@ -125,24 +125,35 @@ export const FindingsScreen: React.FC = () => {
             <div className="flex rounded-lg border border-border bg-bg-card p-1 text-xs">
               <button
                 onClick={() => setActiveTab("overview")}
-                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${activeTab === "overview" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
-                  }`}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+                  activeTab === "overview" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
+                }`}
               >
                 1. Comprehensive Results
               </button>
               <button
                 onClick={() => setActiveTab("class_deepdive")}
-                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${activeTab === "class_deepdive" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
-                  }`}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+                  activeTab === "class_deepdive" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
+                }`}
               >
                 2. Class Deep-Dive
               </button>
               <button
-                onClick={() => setActiveTab("recommendations")}
-                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${activeTab === "recommendations" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
-                  }`}
+                onClick={() => setActiveTab("heatmaps")}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+                  activeTab === "heatmaps" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
+                }`}
               >
-                3. Recommendations
+                3. Scientific Heatmaps
+              </button>
+              <button
+                onClick={() => setActiveTab("recommendations")}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+                  activeTab === "recommendations" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
+                }`}
+              >
+                4. Recommendations
               </button>
             </div>
           </div>
@@ -345,41 +356,37 @@ export const FindingsScreen: React.FC = () => {
                 <div className="flex items-center gap-2 border-b border-border pb-2 text-xs">
                   <button
                     onClick={() => setActiveDimensionTab("data_quality")}
-                    className={`px-3 py-1 rounded-md font-semibold ${
-                      activeDimensionTab === "data_quality"
-                        ? "bg-accent-primary text-white"
-                        : "text-txt-muted hover:text-txt-primary"
-                    }`}
+                    className={`px-3 py-1 rounded-md font-semibold ${activeDimensionTab === "data_quality"
+                      ? "bg-accent-primary text-white"
+                      : "text-txt-muted hover:text-txt-primary"
+                      }`}
                   >
                     Data Quality Breakdown
                   </button>
                   <button
                     onClick={() => setActiveDimensionTab("nids_suitability")}
-                    className={`px-3 py-1 rounded-md font-semibold ${
-                      activeDimensionTab === "nids_suitability"
-                        ? "bg-accent-primary text-white"
-                        : "text-txt-muted hover:text-txt-primary"
-                    }`}
+                    className={`px-3 py-1 rounded-md font-semibold ${activeDimensionTab === "nids_suitability"
+                      ? "bg-accent-primary text-white"
+                      : "text-txt-muted hover:text-txt-primary"
+                      }`}
                   >
                     NIDS Suitability Breakdown
                   </button>
                   <button
                     onClick={() => setActiveDimensionTab("shortcut_risk")}
-                    className={`px-3 py-1 rounded-md font-semibold ${
-                      activeDimensionTab === "shortcut_risk"
-                        ? "bg-accent-primary text-white"
-                        : "text-txt-muted hover:text-txt-primary"
-                    }`}
+                    className={`px-3 py-1 rounded-md font-semibold ${activeDimensionTab === "shortcut_risk"
+                      ? "bg-accent-primary text-white"
+                      : "text-txt-muted hover:text-txt-primary"
+                      }`}
                   >
                     Shortcut Risk Breakdown
                   </button>
                   <button
                     onClick={() => setActiveDimensionTab("evaluation_reliability")}
-                    className={`px-3 py-1 rounded-md font-semibold ${
-                      activeDimensionTab === "evaluation_reliability"
-                        ? "bg-accent-primary text-white"
-                        : "text-txt-muted hover:text-txt-primary"
-                    }`}
+                    className={`px-3 py-1 rounded-md font-semibold ${activeDimensionTab === "evaluation_reliability"
+                      ? "bg-accent-primary text-white"
+                      : "text-txt-muted hover:text-txt-primary"
+                      }`}
                   >
                     Evaluation Reliability Breakdown
                   </button>
@@ -508,13 +515,13 @@ export const FindingsScreen: React.FC = () => {
                         {c.class}
                         <span className="text-[10px] text-txt-muted font-mono font-normal">N={c.n}</span>
                       </td>
-                      <td className="p-3 text-center font-mono">{c.paper.UGT !== null ? c.paper.UGT.toFixed(3) : "N/A"}</td>
-                      <td className="p-3 text-center font-mono">{c.paper.WL !== null ? c.paper.WL.toFixed(3) : "N/A"}</td>
-                      <td className="p-3 text-center font-mono">{c.paper.HDF !== null ? c.paper.HDF.toFixed(3) : "N/A"}</td>
-                      <td className="p-3 text-center font-mono">{c.paper.PDD !== null ? c.paper.PDD.toFixed(3) : "N/A"}</td>
-                      <td className="p-3 text-center font-mono">{c.paper.TC !== null ? c.paper.TC.toFixed(3) : "N/A"}</td>
+                      <td className="p-3 text-center font-mono">{typeof c.paper?.UGT === "number" ? c.paper.UGT.toFixed(3) : "N/A"}</td>
+                      <td className="p-3 text-center font-mono">{typeof c.paper?.WL === "number" ? c.paper.WL.toFixed(3) : "N/A"}</td>
+                      <td className="p-3 text-center font-mono">{typeof c.paper?.HDF === "number" ? c.paper.HDF.toFixed(3) : "N/A"}</td>
+                      <td className="p-3 text-center font-mono">{typeof c.paper?.PDD === "number" ? c.paper.PDD.toFixed(3) : "N/A"}</td>
+                      <td className="p-3 text-center font-mono">{typeof c.paper?.TC === "number" ? c.paper.TC.toFixed(3) : "N/A"}</td>
                       <td className="p-3 text-center font-mono font-bold text-accent-secondary">
-                        {c.sfi.sfi_top !== null ? c.sfi.sfi_top.toFixed(3) : "N/A"}
+                        {typeof c.sfi?.sfi_top === "number" ? c.sfi.sfi_top.toFixed(3) : "N/A"}
                       </td>
                       <td className="p-3 text-center">
                         <Badge variant={c.sfi.flag ? "danger" : "success"}>
@@ -630,7 +637,218 @@ export const FindingsScreen: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: RECOMMENDATIONS & NEXT ACTIONS */}
+      {/* TAB 3: SCIENTIFIC HEATMAPS & MULTI-CLASS MATRIX */}
+      {activeTab === "heatmaps" && (
+        <div className="space-y-6">
+          {/* Heatmap 1: Per-Class Smell Heatmap Matrix */}
+          <Card>
+            <CardHeader className="py-3 px-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-bold text-txt-primary">
+                    Per-Class Smell Severity Heatmap
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Cross-heuristic comparison across all attack classes. Color intensity reflects heuristic severity.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] font-mono">
+                  <span className="flex items-center gap-1">
+                    <span className="h-2.5 w-2.5 rounded bg-emerald-500/20 border border-emerald-500/60" /> Normal
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2.5 w-2.5 rounded bg-amber-500/20 border border-amber-500/60" /> Warning
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2.5 w-2.5 rounded bg-rose-500/20 border border-rose-500/60" /> Critical Smell
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-bg-elevated/60 text-txt-muted text-[11px] font-mono border-b border-border">
+                  <tr>
+                    <th className="py-2.5 px-3">Attack Class</th>
+                    <th className="py-2.5 px-2 text-center">N</th>
+                    <th className="py-2.5 px-2 text-center">UGT (Port)</th>
+                    <th className="py-2.5 px-2 text-center">WL (Leakage)</th>
+                    <th className="py-2.5 px-2 text-center">HDF (Dominance)</th>
+                    <th className="py-2.5 px-2 text-center">PDD (Dup)</th>
+                    <th className="py-2.5 px-2 text-center">TC (Order)</th>
+                    <th className="py-2.5 px-2 text-center">SFI Flag</th>
+                    <th className="py-2.5 px-2 text-center">ΔSFI</th>
+                    <th className="py-2.5 px-2 text-center">GGI Gap</th>
+                    <th className="py-2.5 px-2 text-center">LOR</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60 font-mono">
+                  {availableClasses.map((c) => {
+                    const ugt = c.paper?.UGT;
+                    const wl = c.paper?.WL;
+                    const hdf = c.paper?.HDF;
+                    const pdd = c.paper?.PDD;
+                    const tc = c.paper?.TC;
+                    const sfiFlag = c.sfi?.flag;
+                    const sfiDelta = c.sfi?.delta;
+                    const ggiGap = c.ggi?.gap;
+                    const lor = c.ggi?.lor;
+
+                    const getCellClass = (val: number | null | undefined, warnThresh: number, critThresh: number, invert = false) => {
+                      if (val === null || val === undefined) return "text-txt-muted bg-transparent";
+                      if (invert) {
+                        if (val <= critThresh) return "bg-rose-950/40 text-rose-300 font-bold";
+                        if (val <= warnThresh) return "bg-amber-950/30 text-amber-300";
+                        return "bg-emerald-950/30 text-emerald-300";
+                      }
+                      if (val >= critThresh) return "bg-rose-950/40 text-rose-300 font-bold";
+                      if (val >= warnThresh) return "bg-amber-950/30 text-amber-300";
+                      return "bg-emerald-950/30 text-emerald-300";
+                    };
+
+                    return (
+                      <tr
+                        key={c.class}
+                        onClick={() => setSelectedClass(c.class)}
+                        className={`hover:bg-bg-elevated/50 cursor-pointer transition-colors ${
+                          activeClass === c.class ? "bg-accent-primary/10" : ""
+                        }`}
+                      >
+                        <td className="py-2.5 px-3 font-semibold text-txt-primary flex items-center gap-1.5 font-sans">
+                          {c.class}
+                          {sfiFlag && <span className="h-2 w-2 rounded-full bg-status-block shrink-0" />}
+                        </td>
+                        <td className="py-2.5 px-2 text-center text-txt-muted">{c.n}</td>
+                        <td className={`py-2.5 px-2 text-center ${getCellClass(ugt, 0.4, 0.8)}`}>
+                          {ugt !== null && ugt !== undefined ? ugt.toFixed(2) : "—"}
+                        </td>
+                        <td className={`py-2.5 px-2 text-center ${getCellClass(wl, 0.4, 0.8)}`}>
+                          {wl !== null && wl !== undefined ? wl.toFixed(2) : "—"}
+                        </td>
+                        <td className={`py-2.5 px-2 text-center ${getCellClass(hdf, 0.5, 0.8)}`}>
+                          {hdf !== null && hdf !== undefined ? hdf.toFixed(2) : "—"}
+                        </td>
+                        <td className={`py-2.5 px-2 text-center ${getCellClass(pdd, 0.5, 0.85)}`}>
+                          {pdd !== null && pdd !== undefined ? pdd.toFixed(2) : "—"}
+                        </td>
+                        <td className={`py-2.5 px-2 text-center ${getCellClass(tc, 0.3, 0.6)}`}>
+                          {tc !== null && tc !== undefined ? tc.toFixed(2) : "—"}
+                        </td>
+                        <td className="py-2.5 px-2 text-center">
+                          {sfiFlag ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-rose-950/80 text-rose-300 border border-rose-700/60 font-bold">
+                              FLAGGED
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950/60 text-emerald-300 border border-emerald-700/60">
+                              PASS
+                            </span>
+                          )}
+                        </td>
+                        <td className={`py-2.5 px-2 text-center ${getCellClass(sfiDelta, 0.2, 0.4)}`}>
+                          {sfiDelta !== null && sfiDelta !== undefined ? sfiDelta.toFixed(3) : "—"}
+                        </td>
+                        <td className={`py-2.5 px-2 text-center ${getCellClass(ggiGap, 0.1, 0.25)}`}>
+                          {ggiGap !== null && ggiGap !== undefined ? ggiGap.toFixed(3) : "—"}
+                        </td>
+                        <td className={`py-2.5 px-2 text-center ${getCellClass(lor, 1.5, 3.0)}`}>
+                          {lor !== null && lor !== undefined ? lor.toFixed(2) : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          {/* Heatmap 2: Feature Taxonomy & Shortcut Susceptibility */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm">Feature Importance & Taxonomy Taxonomy Matrix</CardTitle>
+                <CardDescription>
+                  Evaluated for class: <strong className="text-txt-primary">{activeClass}</strong>
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                {classData.sfi.top_features && classData.sfi.top_features.length > 0 ? (
+                  <div className="space-y-2">
+                    {classData.sfi.top_features.map((feat, idx) => {
+                      const cat = classData.sfi.categories ? classData.sfi.categories[idx] : "UNMAPPED";
+                      const catColor =
+                        cat === "A"
+                          ? "bg-rose-950/60 text-rose-300 border-rose-700/60"
+                          : cat === "B"
+                          ? "bg-amber-950/60 text-amber-300 border-amber-700/60"
+                          : cat === "C"
+                          ? "bg-blue-950/60 text-cyan-300 border-cyan-800/60"
+                          : "bg-emerald-950/60 text-emerald-300 border-emerald-700/60";
+
+                      const catLabel =
+                        cat === "A"
+                          ? "Cat A (Environment/Port)"
+                          : cat === "B"
+                          ? "Cat B (Attack Artefact)"
+                          : cat === "C"
+                          ? "Cat C (Flow Dynamics)"
+                          : "Cat D (Benign Traffic)";
+
+                      return (
+                        <div
+                          key={feat}
+                          className="p-2.5 rounded-lg border border-border bg-bg-elevated/40 flex items-center justify-between text-xs"
+                        >
+                          <div className="space-y-0.5">
+                            <span className="font-mono font-semibold text-txt-primary block">{feat}</span>
+                            <span className="text-[10px] text-txt-muted">Rank #{idx + 1} predictive feature</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${catColor}`}>
+                            {catLabel}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-txt-muted text-xs">
+                    No individual feature taxonomy anomalies detected for this class.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Heatmap 3: Shortcut Fragility Decay Curves */}
+            <Card>
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm">Shortcut Fragility Decay Response</CardTitle>
+                <CardDescription>
+                  Empirical recall degradation under incremental feature perturbation ($\delta \in [0.1, 1.0]$)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                {classData.sfi?.fragility_curve?.delta?.length > 0 ? (
+                  <SfiDecayPlot
+                    deltas={classData.sfi.fragility_curve.delta}
+                    recallTop={classData.sfi.fragility_curve.recall_top}
+                    recallNullMean={classData.sfi.fragility_curve.recall_null_mean}
+                    topFeatureName={classData.sfi.top_features?.[0] || "Top Feature"}
+                  />
+                ) : (
+                  <div className="text-center py-8 text-txt-muted text-xs">
+                    Fragility curve data not applicable or not generated for this class.
+                  </div>
+                )}
+                <div className="p-2.5 rounded-lg border border-border bg-bg-elevated/40 text-[11px] text-txt-muted leading-relaxed">
+                  Steep downward divergence of the cyan line relative to the baseline indicates model reliance on brittle features rather than robust packet dynamics.
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: RECOMMENDATIONS & NEXT ACTIONS */}
       {activeTab === "recommendations" && (
         <Card>
           <CardHeader className="py-3 px-4">

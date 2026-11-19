@@ -7,6 +7,9 @@ import {
   DatasetValidateResponse,
   FragilityGridResponse,
   HealthResponse,
+  ModelCompatibilityResponse,
+  ModelMetadata,
+  ModelPredictResponse,
   RemediationPreview,
   ReportGenerateResponse,
   RunResult,
@@ -151,4 +154,35 @@ export const api = {
     request<any>(`/audits/${runId}/comparison${targetClass ? `?target_class=${encodeURIComponent(targetClass)}` : ""}`),
 
   getDownloadUrl: (runId: string) => `${BASE_URL}/audits/${runId}/export/dataset`,
+
+  // Model Persistence & Registry (Phase 13)
+  listModels: () => request<ModelMetadata[]>("/models"),
+
+  saveModel: (runId: string, modelName?: string, notes?: string) =>
+    request<any>("/models/save", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId, model_name: modelName, notes }),
+    }),
+
+  getModelDetails: (modelId: string) => request<ModelMetadata>(`/models/${modelId}`),
+
+  verifyModelCompatibility: (modelId: string, datasetId?: string, labelCol?: string) =>
+    request<ModelCompatibilityResponse>(`/models/${modelId}/verify-compatibility`, {
+      method: "POST",
+      body: JSON.stringify({ dataset_id: datasetId, label_col: labelCol }),
+    }),
+
+  predictWithModel: (modelId: string, datasetId?: string, limit = 50) =>
+    request<ModelPredictResponse>(`/models/${modelId}/predict`, {
+      method: "POST",
+      body: JSON.stringify({ dataset_id: datasetId, limit }),
+    }),
+
+  deleteModel: (modelId: string) =>
+    request<{ status: string; model_id: string }>(`/models/${modelId}`, {
+      method: "DELETE",
+    }),
+
+  getModelDownloadUrl: (modelId: string) => `${BASE_URL}/models/${modelId}/download`,
+  getModelBundleUrl: (modelId: string) => `${BASE_URL}/models/${modelId}/bundle`,
 };

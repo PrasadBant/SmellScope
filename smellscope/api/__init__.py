@@ -188,9 +188,10 @@ def rebenchmark(
     remediated_view: Dict[str, Any],
     cfg: Optional[Dict[str, Any]] = None,
     target_class: Optional[str] = None,
+    run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Re-benchmark model performance on locked test set before vs after remediation."""
-    return _rebenchmark(ds, split, original_view, remediated_view, cfg, target_class)
+    return _rebenchmark(ds, split, original_view, remediated_view, cfg, target_class, run_id=run_id)
 
 
 def get_change_log(run_id: str) -> List[Dict[str, Any]]:

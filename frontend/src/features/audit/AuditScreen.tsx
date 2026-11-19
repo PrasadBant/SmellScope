@@ -16,6 +16,9 @@ import {
   RefreshCw,
   ShieldCheck,
   Info,
+  AlertOctagon,
+  Sparkles,
+  ShieldAlert,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -405,7 +408,7 @@ export const AuditScreen: React.FC = () => {
             <MetricCard
               title="Baseline Accuracy"
               value={classData.baseline.acc !== null ? `${(classData.baseline.acc * 100).toFixed(1)}%` : "N/A"}
-              subtitle="Overall test accuracy"
+              subtitle="Locked holdout test accuracy"
               evidenceType="measured"
               icon={<CheckCircle2 className="h-4 w-4 text-accent-secondary" />}
             />
@@ -431,6 +434,277 @@ export const AuditScreen: React.FC = () => {
               icon={<ShieldCheck className="h-4 w-4 text-emerald-400" />}
             />
           </div>
+
+          {/* Train vs. Validation vs. Locked Test Partition Separation */}
+          <Card>
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm flex items-center justify-between">
+                <span>Partition Metrics Breakdown (Train vs. Val vs. Locked Test)</span>
+                <span className="text-[11px] font-normal text-txt-muted">
+                  Strict holdout invariance: 60% Train, 20% Val, 20% Test
+                </span>
+              </CardTitle>
+              <CardDescription>
+                Never conflate training convergence with generalization. SmellScope evaluates all 3 partitions independently to detect memorization and split leaks.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Train Partition */}
+                <div className="p-3.5 rounded-lg border border-border bg-bg-elevated space-y-2">
+                  <div className="flex items-center justify-between border-b border-border/50 pb-2">
+                    <span className="text-xs font-bold text-txt-primary flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                      Train Split (60%)
+                    </span>
+                    <span className="text-[10px] text-txt-muted uppercase font-mono">Fitting Reference</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Accuracy</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.train?.accuracy !== undefined && classData.baseline.train?.accuracy !== null
+                          ? `${(classData.baseline.train.accuracy * 100).toFixed(1)}%`
+                          : classData.baseline.acc !== null ? `${(classData.baseline.acc * 100).toFixed(1)}%` : "N/A"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Macro F1</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.train?.macro_f1 !== undefined && classData.baseline.train?.macro_f1 !== null
+                          ? `${(classData.baseline.train.macro_f1 * 100).toFixed(1)}%`
+                          : classData.baseline.f1 !== null ? `${(classData.baseline.f1 * 100).toFixed(1)}%` : "N/A"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Recall (TPR)</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.train?.tpr !== undefined && classData.baseline.train?.tpr !== null
+                          ? `${(classData.baseline.train.tpr * 100).toFixed(1)}%`
+                          : classData.baseline.tpr !== null ? `${(classData.baseline.tpr * 100).toFixed(1)}%` : "N/A"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">ROC-AUC</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.train?.roc_auc !== undefined && classData.baseline.train?.roc_auc !== null
+                          ? classData.baseline.train.roc_auc.toFixed(3)
+                          : "N/A"}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Validation Partition */}
+                <div className="p-3.5 rounded-lg border border-border bg-bg-elevated space-y-2">
+                  <div className="flex items-center justify-between border-b border-border/50 pb-2">
+                    <span className="text-xs font-bold text-txt-primary flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-purple-500"></span>
+                      Validation Split (20%)
+                    </span>
+                    <span className="text-[10px] text-txt-muted uppercase font-mono">Tuning Reference</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Accuracy</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.val?.accuracy !== undefined && classData.baseline.val?.accuracy !== null
+                          ? `${(classData.baseline.val.accuracy * 100).toFixed(1)}%`
+                          : "N/A"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Macro F1</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.val?.macro_f1 !== undefined && classData.baseline.val?.macro_f1 !== null
+                          ? `${(classData.baseline.val.macro_f1 * 100).toFixed(1)}%`
+                          : "N/A"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Recall (TPR)</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.val?.tpr !== undefined && classData.baseline.val?.tpr !== null
+                          ? `${(classData.baseline.val.tpr * 100).toFixed(1)}%`
+                          : "N/A"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">ROC-AUC</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.val?.roc_auc !== undefined && classData.baseline.val?.roc_auc !== null
+                          ? classData.baseline.val.roc_auc.toFixed(3)
+                          : "N/A"}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Locked Test Partition */}
+                <div className="p-3.5 rounded-lg border border-status-success/40 bg-status-success/5 space-y-2">
+                  <div className="flex items-center justify-between border-b border-status-success/30 pb-2">
+                    <span className="text-xs font-bold text-status-success flex items-center gap-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      Locked Test Split (20%)
+                    </span>
+                    <span className="text-[10px] text-status-success/80 uppercase font-mono">Holdout Standard</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Accuracy</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.test?.accuracy !== undefined && classData.baseline.test?.accuracy !== null
+                          ? `${(classData.baseline.test.accuracy * 100).toFixed(1)}%`
+                          : classData.baseline.acc !== null ? `${(classData.baseline.acc * 100).toFixed(1)}%` : "N/A"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Macro F1</span>
+                      <strong className="text-status-success">
+                        {classData.baseline.test?.macro_f1 !== undefined && classData.baseline.test?.macro_f1 !== null
+                          ? `${(classData.baseline.test.macro_f1 * 100).toFixed(1)}%`
+                          : classData.baseline.f1 !== null ? `${(classData.baseline.f1 * 100).toFixed(1)}%` : "N/A"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Recall (TPR)</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.test?.tpr !== undefined && classData.baseline.test?.tpr !== null
+                          ? `${(classData.baseline.test.tpr * 100).toFixed(1)}%`
+                          : classData.baseline.tpr !== null ? `${(classData.baseline.tpr * 100).toFixed(1)}%` : "N/A"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-txt-muted block">Specificity (TNR)</span>
+                      <strong className="text-txt-primary">
+                        {classData.baseline.test?.tnr !== undefined && classData.baseline.test?.tnr !== null
+                          ? `${(classData.baseline.test.tnr * 100).toFixed(1)}%`
+                          : classData.baseline.tnr !== null ? `${(classData.baseline.tnr * 100).toFixed(1)}%` : "N/A"}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 100% ACCURACY — VERIFICATION REQUIRED DIAGNOSTIC PANEL */}
+          {classData.baseline?.perfect_accuracy_investigation?.triggered && (
+            <Card className="border-amber-500/40 bg-bg-card shadow-lg shadow-amber-950/20">
+              <CardHeader className="py-3 px-4 border-b border-border/80 bg-amber-950/20">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="h-5 w-5 text-amber-400" />
+                    <div>
+                      <CardTitle className="text-sm font-bold text-txt-primary">
+                        100% Accuracy — Verification Required
+                      </CardTitle>
+                      <CardDescription className="text-xs text-amber-300/80">
+                        Rigorous scientific audit across 14 inspection areas to establish root cause.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-1 rounded text-xs font-bold font-mono uppercase tracking-wider border ${
+                      classData.baseline.perfect_accuracy_investigation.case === "CASE_D"
+                        ? "bg-emerald-950/80 border-emerald-500 text-emerald-300"
+                        : classData.baseline.perfect_accuracy_investigation.case === "CASE_B"
+                        ? "bg-rose-950/80 border-rose-500 text-rose-300"
+                        : classData.baseline.perfect_accuracy_investigation.case === "CASE_A"
+                        ? "bg-amber-950/80 border-amber-500 text-amber-300"
+                        : "bg-purple-950/80 border-purple-500 text-purple-300"
+                    }`}>
+                      {classData.baseline.perfect_accuracy_investigation.case.replace("_", " ")}: {classData.baseline.perfect_accuracy_investigation.case_title}
+                    </span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4">
+                {/* Description & Actionable Recommendation */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-3 rounded-lg border border-border bg-bg-elevated/70">
+                    <span className="text-[10px] text-txt-muted uppercase font-bold block mb-1">
+                      Scientific Assessment
+                    </span>
+                    <p className="text-xs text-txt-secondary leading-relaxed">
+                      {classData.baseline.perfect_accuracy_investigation.description}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg border border-accent-primary/30 bg-accent-primary/5">
+                    <span className="text-[10px] text-accent-primary uppercase font-bold block mb-1">
+                      Actionable Recommendation
+                    </span>
+                    <p className="text-xs text-txt-primary leading-relaxed">
+                      {classData.baseline.perfect_accuracy_investigation.recommendation}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Key Empirical Findings */}
+                {classData.baseline.perfect_accuracy_investigation.findings?.length > 0 && (
+                  <div className="p-3 rounded-lg border border-border bg-bg-card">
+                    <span className="text-[10px] text-txt-muted uppercase font-bold block mb-2">
+                      Key Findings & Evidentiary Indicators
+                    </span>
+                    <ul className="space-y-1.5 text-xs text-txt-secondary">
+                      {classData.baseline.perfect_accuracy_investigation.findings.map((f, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-amber-400 mt-0.5">•</span>
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* 14-Dimension Inspection Matrix */}
+                <div>
+                  <span className="text-[10px] text-txt-muted uppercase font-bold block mb-2">
+                    14-Dimension Diagnostic Inspection Matrix
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {Object.entries(classData.baseline.perfect_accuracy_investigation.areas_evaluated || {}).map(
+                      ([key, dim]: [string, any]) => {
+                        const statusColor =
+                          dim.status === "PASS"
+                            ? "bg-emerald-950/60 text-emerald-300 border-emerald-700/60"
+                            : dim.status === "NORMAL"
+                            ? "bg-blue-950/60 text-cyan-300 border-cyan-800/60"
+                            : dim.status === "CONCERN"
+                            ? "bg-amber-950/60 text-amber-300 border-amber-700/60"
+                            : "bg-rose-950/60 text-rose-300 border-rose-700/60";
+
+                        const formattedKey = key
+                          .replace(/_/g, " ")
+                          .replace(/\b\w/g, (c) => c.toUpperCase());
+
+                        return (
+                          <div
+                            key={key}
+                            className="p-2.5 rounded-lg border border-border bg-bg-elevated/40 flex flex-col justify-between"
+                          >
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                              <span className="text-[11px] font-semibold text-txt-primary truncate">
+                                {formattedKey}
+                              </span>
+                              <span
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold border uppercase shrink-0 ${statusColor}`}
+                              >
+                                {dim.status}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-txt-muted leading-tight line-clamp-2">
+                              {dim.detail}
+                            </p>
+                          </div>
+                        );
+                      }
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Model Configuration & Sealed Splitting Card */}
           <Card>

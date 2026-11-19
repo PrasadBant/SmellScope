@@ -389,6 +389,7 @@ class RemediationSessionManager:
                 original_view=orig_view,
                 remediated_view=rem_view,
                 target_class=target_class,
+                run_id=run_id,
             )
             self._rebenchmarks[run_id] = res
             return res

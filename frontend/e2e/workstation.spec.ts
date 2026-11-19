@@ -105,7 +105,7 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     await toBaselineBtn.click();
     await expect(page.getByText("Establish Baseline Performance")).toBeVisible();
     await expect(page.getByText("Baseline Test F1")).toBeVisible();
-    await expect(page.getByText("Recall (TPR)")).toBeVisible();
+    await expect(page.getByText("Recall (TPR)").first()).toBeVisible();
 
     // 8. Step 6: Investigate Shortcut Sensitivity (SFI)
     const toSfiBtn = page.getByRole("button", { name: /CONTINUE TO SHORTCUT ANALYSIS/i });
@@ -250,5 +250,45 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     // Navigate to History
     await page.goto("/history");
     await expect(page.getByText("Audit History")).toBeVisible();
+  });
+
+  test("Journey D — Model Persistence & Reusable Training Bundle (.zip) Export", async ({ page, request }) => {
+    test.setTimeout(90000);
+
+    const runId = await getOrInitAudit(request);
+
+    await page.addInitScript(({ runId }) => {
+      localStorage.setItem("smellscope_active_run", runId);
+      localStorage.setItem("smellscope_active_dataset", "cic2017_sample_planted");
+    }, { runId });
+
+    await page.goto("/comparison");
+
+    // Check that Comparison screen or empty state loaded
+    await expect(page.getByText(/Dataset Comparison|No Comparison Data Yet/i)).toBeVisible({ timeout: 15000 });
+
+    // If Comparison screen is active, test saving model and registry
+    const saveModelBtn = page.getByRole("button", { name: /Save Trained Model/i });
+    if (await saveModelBtn.isVisible()) {
+      await saveModelBtn.click();
+      await expect(page.getByText("Save Model to Versioned Registry")).toBeVisible();
+      const saveConfirmBtn = page.getByRole("button", { name: /^Save Model$/i });
+      await expect(saveConfirmBtn).toBeVisible();
+      await saveConfirmBtn.click();
+
+      // Check model persistence confirmation and bundle download button
+      await expect(page.getByText(/MODEL PERSISTED|Download Reusable Bundle/i).first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByRole("button", { name: /Download Reusable Bundle \(\.zip\)/i })).toBeVisible();
+    }
+
+    // Verify registry modal
+    const registryBtn = page.getByRole("button", { name: /Saved Models Registry/i });
+    if (await registryBtn.isVisible()) {
+      await registryBtn.click();
+      await expect(page.getByText("Persisted Models Registry")).toBeVisible();
+      const closeBtn = page.getByRole("button", { name: /Close/i });
+      await expect(closeBtn).toBeVisible();
+      await closeBtn.click();
+    }
   });
 });

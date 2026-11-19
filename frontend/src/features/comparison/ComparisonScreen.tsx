@@ -12,6 +12,13 @@ import {
   CheckCircle2,
   Wrench,
   ShieldCheck,
+  Save,
+  PackageCheck,
+  FileArchive,
+  Database,
+  Trash2,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -85,11 +92,83 @@ const pct = (v: number | null | undefined) => {
 
 export const ComparisonScreen: React.FC = () => {
   const navigate = useNavigate();
-  const { activeRunId, isHydrating, latestRunResult } = useAuditContext();
+  const { activeRunId, activeDatasetId, isHydrating, latestRunResult } = useAuditContext();
 
   const [data, setData] = useState<ComparisonData | null>(null);
   const [loading, setLoading] = useState(false);
   const [notAvailable, setNotAvailable] = useState(false);
+
+  // Model Persistence & Registry States (Phase 13)
+  const [savingModel, setSavingModel] = useState(false);
+  const [savedModelInfo, setSavedModelInfo] = useState<any | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [modelNameInput, setModelNameInput] = useState("");
+  const [modelNotesInput, setModelNotesInput] = useState("");
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showRegistryDialog, setShowRegistryDialog] = useState(false);
+  const [savedModelsList, setSavedModelsList] = useState<any[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [compatibilityResult, setCompatibilityResult] = useState<Record<string, any>>({});
+  const [verifyingModelId, setVerifyingModelId] = useState<string | null>(null);
+
+  const fetchModels = async () => {
+    setLoadingModels(true);
+    try {
+      const list = await api.listModels();
+      setSavedModelsList(list);
+    } catch (e) {
+      console.warn("Could not list models:", e);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  const handleSaveModel = async () => {
+    if (!activeRunId) return;
+    setSavingModel(true);
+    setSaveError(null);
+    try {
+      const saved = await api.saveModel(
+        activeRunId,
+        modelNameInput.trim() || `RandomForest-${activeRunId.slice(-6)}`,
+        modelNotesInput.trim() || undefined
+      );
+      setSavedModelInfo(saved);
+      setShowSaveDialog(false);
+      fetchModels();
+    } catch (err: any) {
+      setSaveError(err.message || "Failed to save trained model");
+    } finally {
+      setSavingModel(false);
+    }
+  };
+
+  const handleVerifyCompatibility = async (modelId: string) => {
+    setVerifyingModelId(modelId);
+    try {
+      const comp = await api.verifyModelCompatibility(modelId, activeDatasetId || undefined);
+      setCompatibilityResult((prev) => ({ ...prev, [modelId]: comp }));
+    } catch (e: any) {
+      setCompatibilityResult((prev) => ({
+        ...prev,
+        [modelId]: { compatible: false, message: e.message || "Verification failed" },
+      }));
+    } finally {
+      setVerifyingModelId(null);
+    }
+  };
+
+  const handleDeleteModel = async (modelId: string) => {
+    try {
+      await api.deleteModel(modelId);
+      if (savedModelInfo?.model_id === modelId) {
+        setSavedModelInfo(null);
+      }
+      fetchModels();
+    } catch (e: any) {
+      alert("Failed to delete model: " + e.message);
+    }
+  };
 
   useEffect(() => {
     if (isHydrating && !latestRunResult) return;
@@ -177,23 +256,48 @@ export const ComparisonScreen: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <BarChart2 className="h-5 w-5 text-accent-secondary" />
-            <h1 className="text-lg font-bold text-txt-primary">Dataset Comparison</h1>
+            <h1 className="text-lg font-bold text-txt-primary">Dataset Comparison & Model Deployment</h1>
           </div>
-          <p className="text-sm text-txt-muted">Original vs Corrected — data quality and ML benchmark on locked test set.</p>
+          <p className="text-sm text-txt-muted">
+            Original vs Corrected — data quality, ML benchmark on locked test set, and reusable model export.
+          </p>
         </div>
-        <Button
-          variant="primary"
-          size="sm"
-          className="gap-2"
-          onClick={() => window.open(api.getDownloadUrl(activeRunId), "_blank")}
-        >
-          <Download className="h-3.5 w-3.5" />
-          Download Corrected Dataset
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={() => {
+              fetchModels();
+              setShowRegistryDialog(true);
+            }}
+          >
+            <Database className="h-3.5 w-3.5" />
+            Saved Models Registry
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs text-accent-primary border-accent-primary/40 bg-accent-primary/10"
+            onClick={() => setShowSaveDialog(true)}
+          >
+            <Save className="h-3.5 w-3.5" />
+            Save Trained Model
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            className="gap-2 text-xs"
+            onClick={() => window.open(api.getDownloadUrl(activeRunId), "_blank")}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download Dataset
+          </Button>
+        </div>
       </div>
 
       {/* Locked Test Set Banner */}
@@ -438,6 +542,142 @@ export const ComparisonScreen: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Reusable Model Persistence & Export Bundle (Phase 13) */}
+      <Card className="border-accent-primary/40 bg-gradient-to-b from-accent-primary/10 to-transparent">
+        <CardHeader className="py-3 px-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <PackageCheck className="h-5 w-5 text-accent-secondary" />
+              <div>
+                <CardTitle className="text-sm font-bold text-txt-primary">
+                  Trained Model & Reusable Training Bundle
+                </CardTitle>
+                <p className="text-xs text-txt-muted mt-0.5">
+                  Phase 13: Export reproducible model artifact, fitted preprocessor, and 11-file self-contained bundle.
+                </p>
+              </div>
+            </div>
+            {savedModelInfo && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-status-success/20 text-status-success border border-status-success/40 font-bold">
+                MODEL PERSISTED
+              </span>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 space-y-4">
+          {savedModelInfo ? (
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-lg border border-border bg-bg-card grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+                <div>
+                  <span className="text-[10px] text-txt-muted block uppercase">Model Version ID</span>
+                  <strong className="text-accent-secondary text-xs">{savedModelInfo.model_id}</strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-txt-muted block uppercase">Model Name</span>
+                  <strong className="text-txt-primary text-xs">{savedModelInfo.model_name}</strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-txt-muted block uppercase">Algorithm</span>
+                  <strong className="text-txt-primary text-xs">{savedModelInfo.algorithm}</strong>
+                </div>
+                <div className="md:col-span-3 pt-2 border-t border-border/50 text-[11px] text-txt-muted flex flex-wrap gap-4">
+                  <span>
+                    Model SHA-256:{" "}
+                    <code className="text-txt-secondary">{savedModelInfo.model_sha256?.slice(0, 16)}…</code>
+                  </span>
+                  <span>
+                    Preprocessor SHA-256:{" "}
+                    <code className="text-txt-secondary">{savedModelInfo.preprocessor_sha256?.slice(0, 16)}…</code>
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="gap-2 text-xs"
+                  onClick={() => window.open(api.getModelBundleUrl(savedModelInfo.model_id), "_blank")}
+                >
+                  <FileArchive className="h-4 w-4" />
+                  Download Reusable Bundle (.zip)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-xs"
+                  onClick={() => window.open(api.getModelDownloadUrl(savedModelInfo.model_id), "_blank")}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download Model (.joblib)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => {
+                    fetchModels();
+                    setShowRegistryDialog(true);
+                  }}
+                >
+                  <Database className="h-3.5 w-3.5" />
+                  View All Saved Models
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 rounded-lg border border-border bg-bg-card">
+              <div className="space-y-1">
+                <h4 className="text-xs font-bold text-txt-primary">Save Model to Registry</h4>
+                <p className="text-[11px] text-txt-muted">
+                  Persist the model trained on the improved dataset view along with its strict preprocessing pipeline, locked test set, split manifests, and reproducibility checksums.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                className="gap-1.5 text-xs shrink-0"
+                onClick={() => setShowSaveDialog(true)}
+              >
+                <Save className="h-3.5 w-3.5" />
+                Save Model to Registry
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Section E: Evidence-Based Final Interpretation */}
+      <Card>
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-sm">Scientific Summary & Trade-Off Interpretation</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 space-y-3 text-xs leading-relaxed text-txt-secondary">
+          <div className="p-3 rounded-lg border border-border bg-bg-elevated/40 space-y-1.5">
+            <h5 className="font-bold text-txt-primary">Generalization Invariance Across Sealed Test Holdout</h5>
+            <p>
+              The 20% locked test partition remained bit-for-bit invariant throughout remediation (
+              <span className="font-mono text-emerald-400">same_test_ids = {String(integrity.same_test_ids)}</span>).
+              Any change in evaluation metrics strictly reflects true model generalization ability rather than partition slippage or target leakage.
+            </p>
+          </div>
+          <div className="p-3 rounded-lg border border-border bg-bg-elevated/40 space-y-1.5">
+            <h5 className="font-bold text-txt-primary">Feature Ablation & Shortcut Elimination Impact</h5>
+            <p>
+              {lineage.excluded_features?.length > 0 ? (
+                <>
+                  Suppressed {lineage.excluded_features.length} fragile shortcut feature(s) (
+                  <span className="font-mono text-txt-primary">{lineage.excluded_features.join(", ")}</span>).
+                  The model now relies on robust statistical flow dynamics rather than superficial network artifacts.
+                </>
+              ) : (
+                "Data quality transformations (imputation, finite quantile clipping, and deduplication) were successfully applied without removing feature columns."
+              )}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Download CTA */}
       <div className="rounded-xl border border-accent-primary/30 bg-accent-primary/5 p-5 flex items-center justify-between">
         <div>
@@ -446,15 +686,233 @@ export const ComparisonScreen: React.FC = () => {
             Download the repaired CSV with verified test-set integrity.
           </p>
         </div>
-        <Button
-          variant="primary"
-          className="gap-2"
-          onClick={() => window.open(api.getDownloadUrl(activeRunId), "_blank")}
-        >
-          <Download className="h-4 w-4" />
-          Download Corrected Dataset
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => navigate("/reports")}
+          >
+            Generate Final Audit Certificate <ArrowRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="primary"
+            className="gap-2"
+            onClick={() => window.open(api.getDownloadUrl(activeRunId), "_blank")}
+          >
+            <Download className="h-4 w-4" />
+            Download Corrected Dataset
+          </Button>
+        </div>
       </div>
+
+      {/* Save Model Modal Dialog */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-border bg-bg-card p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border/80 pb-3">
+              <div className="flex items-center gap-2">
+                <Save className="h-5 w-5 text-accent-secondary" />
+                <h3 className="text-sm font-bold text-txt-primary">Save Model to Versioned Registry</h3>
+              </div>
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                className="text-txt-muted hover:text-txt-primary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {saveError && (
+              <div className="p-3 rounded-lg border border-rose-500/50 bg-rose-950/20 text-rose-300 text-xs flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400" />
+                <span>{saveError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-semibold text-txt-muted uppercase mb-1">
+                  Model Version Name
+                </label>
+                <input
+                  type="text"
+                  value={modelNameInput}
+                  onChange={(e) => setModelNameInput(e.target.value)}
+                  placeholder={`e.g. RandomForest-${activeRunId.slice(-6)}`}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-bg-elevated text-txt-primary placeholder:text-txt-muted text-xs focus:outline-none focus:border-accent-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-txt-muted uppercase mb-1">
+                  Research Notes (Optional)
+                </label>
+                <textarea
+                  value={modelNotesInput}
+                  onChange={(e) => setModelNotesInput(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Retrained after destination port ablation; evaluated on locked test set."
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-bg-elevated text-txt-primary placeholder:text-txt-muted text-xs focus:outline-none focus:border-accent-primary resize-none"
+                />
+              </div>
+
+              <div className="p-2.5 rounded-lg border border-border/80 bg-bg-elevated/40 text-[11px] text-txt-muted">
+                Saving will bundle the model artifact, preprocessing pipeline, locked test set, split manifest, and cryptographic provenance into a versioned entry in <code className="text-accent-secondary">data/models/</code>.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/80">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSaveDialog(false)}
+                disabled={savingModel}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="gap-2"
+                onClick={handleSaveModel}
+                disabled={savingModel}
+              >
+                {savingModel && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {savingModel ? "Saving Model…" : "Save Model"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Saved Models Registry Modal Dialog */}
+      {showRegistryDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-xl border border-border bg-bg-card p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-border/80 pb-3">
+              <div className="flex items-center gap-2">
+                <Database className="h-5 w-5 text-accent-secondary" />
+                <div>
+                  <h3 className="text-sm font-bold text-txt-primary">Persisted Models Registry</h3>
+                  <p className="text-[11px] text-txt-muted">
+                    Inspect, download, verify schema compatibility, or export bundles for saved models.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRegistryDialog(false)}
+                className="text-txt-muted hover:text-txt-primary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {loadingModels ? (
+                <div className="flex items-center justify-center py-12 text-txt-muted text-xs gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-accent-secondary" />
+                  <span>Loading models...</span>
+                </div>
+              ) : savedModelsList.length === 0 ? (
+                <div className="text-center py-12 text-txt-muted text-xs space-y-2">
+                  <p>No trained models registered yet.</p>
+                  <p className="text-[11px]">Save a model from the comparison screen to populate this registry.</p>
+                </div>
+              ) : (
+                savedModelsList.map((m) => {
+                  const comp = compatibilityResult[m.model_id];
+                  const isVerifying = verifyingModelId === m.model_id;
+
+                  return (
+                    <div
+                      key={m.model_id}
+                      className="p-3.5 rounded-lg border border-border bg-bg-elevated/40 space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-txt-primary font-mono">{m.model_name}</h4>
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-bg-card border border-border text-txt-muted">
+                              {m.model_id}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-txt-muted mt-0.5">
+                            Created: {new Date(m.created_at).toLocaleString()} · Algorithm: {m.algorithm} · Features: {m.schema?.feature_count || 0}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteModel(m.model_id)}
+                          title="Delete model"
+                          className="text-txt-muted hover:text-rose-400 p-1"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      {comp && (
+                        <div
+                          className={`p-2 rounded text-[11px] border font-mono ${
+                            comp.compatible
+                              ? "bg-emerald-950/40 text-emerald-300 border-emerald-700/60"
+                              : "bg-rose-950/40 text-rose-300 border-rose-700/60"
+                          }`}
+                        >
+                          {comp.message}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border/40">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-[11px] h-7"
+                          onClick={() => window.open(api.getModelBundleUrl(m.model_id), "_blank")}
+                        >
+                          <FileArchive className="h-3 w-3" />
+                          Bundle (.zip)
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-[11px] h-7"
+                          onClick={() => window.open(api.getModelDownloadUrl(m.model_id), "_blank")}
+                        >
+                          <Download className="h-3 w-3" />
+                          Model (.joblib)
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-[11px] h-7"
+                          onClick={() => handleVerifyCompatibility(m.model_id)}
+                          disabled={isVerifying}
+                        >
+                          {isVerifying ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <ShieldCheck className="h-3 w-3" />
+                          )}
+                          Verify Compatibility
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-border/80">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowRegistryDialog(false)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

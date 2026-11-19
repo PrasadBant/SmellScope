@@ -347,3 +347,63 @@ class DatasetComparisonResponse(BaseModel):
     ml_benchmark: Dict[str, Any]
     test_integrity: Dict[str, Any]
     view_lineage: Dict[str, Any]
+
+
+# =============================================================================
+# Model Registry & Persistence Schemas (Phase 13)
+# =============================================================================
+
+class ModelSaveRequest(BaseModel):
+    run_id: str
+    model_name: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ModelMetadataResponse(BaseModel):
+    model_id: str
+    model_name: str
+    created_at: str
+    algorithm: str
+    model_sha256: str
+    preprocessor_sha256: str
+    provenance: Dict[str, Any]
+    model_schema: Dict[str, Any] = Field(alias="schema", default_factory=dict)
+    hyperparameters: Dict[str, Any]
+    metrics: Dict[str, Any]
+    environment: Dict[str, Any]
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ModelCompatibilityRequest(BaseModel):
+    dataset_id: Optional[str] = None
+    label_col: Optional[str] = None
+
+
+class ModelCompatibilityResponse(BaseModel):
+    model_id: str
+    compatible: bool
+    required_feature_count: int
+    present_feature_count: int
+    missing_features: List[str]
+    extra_features_count: int
+    type_mismatches: List[Dict[str, str]]
+    label_col_match: bool
+    model_algorithm: Optional[str] = None
+    model_classes: List[str] = Field(default_factory=list)
+    created_at: Optional[str] = None
+    trained_dataset: Optional[str] = None
+
+
+class ModelPredictRequest(BaseModel):
+    dataset_id: Optional[str] = None
+    limit: Optional[int] = 50
+
+
+class ModelPredictResponse(BaseModel):
+    model_id: str
+    n_evaluated: int
+    predictions: List[str]
+    probabilities: Optional[List[List[float]]] = None
+    classes: List[str]
+    row_ids: List[Any]
