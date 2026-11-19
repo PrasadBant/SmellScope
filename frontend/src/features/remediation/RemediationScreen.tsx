@@ -34,7 +34,7 @@ export const RemediationScreen: React.FC = () => {
   } = useAuditContext();
 
   const [currentStep, setCurrentStep] = useState<RemediationSubStep>("9_PREVIEW");
-  const [actionType, setActionType] = useState<"R1" | "R2">("R1");
+  const [actionType] = useState<"R1">("R1");
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>(["Init_Win_bytes_backward"]);
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<RemediationPreview | null>(null);
@@ -245,60 +245,38 @@ export const RemediationScreen: React.FC = () => {
                 <CardTitle className="text-sm">Select Supported Remediation Action</CardTitle>
               </CardHeader>
               <CardContent className="p-4 space-y-4 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setActionType("R1")}
-                    className={`p-3.5 rounded-xl border text-left transition-all ${
-                      actionType === "R1"
-                        ? "border-accent-primary bg-accent-primary/10 text-txt-primary"
-                        : "border-border bg-bg-elevated text-txt-muted hover:text-txt-primary"
-                    }`}
-                  >
-                    <span className="font-bold block text-sm">R1 Feature Ablation</span>
-                    <span className="text-[11px] block mt-1">
-                      Remove selected candidate shortcut features from the training-data view.
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => setActionType("R2")}
-                    className={`p-3.5 rounded-xl border text-left transition-all ${
-                      actionType === "R2"
-                        ? "border-accent-primary bg-accent-primary/10 text-txt-primary"
-                        : "border-border bg-bg-elevated text-txt-muted hover:text-txt-primary"
-                    }`}
-                  >
-                    <span className="font-bold block text-sm">R2 Flow Quarantine</span>
-                    <span className="text-[11px] block mt-1">
-                      Isolate candidate anomalous traffic records in a separate controlled view.
-                    </span>
-                  </button>
+                <div className="p-3.5 rounded-xl border border-accent-primary bg-accent-primary/10 text-txt-primary">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm">R1 Feature Ablation</span>
+                    <Badge variant="success">SUPPORTED</Badge>
+                  </div>
+                  <span className="text-[11px] text-txt-muted block mt-1">
+                    Remove verified candidate shortcut features from the training partition to test model generalisation.
+                  </span>
                 </div>
 
-                {actionType === "R1" && (
-                  <div className="space-y-2 pt-2">
-                    <label className="font-semibold text-txt-primary block">Candidate Shortcut Features to Ablate:</label>
-                    <div className="space-y-1.5 font-mono">
-                      {["Init_Win_bytes_backward", "Destination Port", "Flow_Duration"].map((feat) => {
-                        const isChecked = selectedFeatures.includes(feat);
-                        return (
-                          <label key={feat} className="flex items-center gap-2 p-2 rounded bg-bg-elevated border border-border cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                if (e.target.checked) setSelectedFeatures([...selectedFeatures, feat]);
-                                else setSelectedFeatures(selectedFeatures.filter((f) => f !== feat));
-                              }}
-                              className="rounded border-border text-accent-primary"
-                            />
-                            <span className="text-txt-primary">{feat}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
+                <div className="space-y-2 pt-2">
+                  <label className="font-semibold text-txt-primary block">Candidate Shortcut Features to Ablate:</label>
+                  <div className="space-y-1.5 font-mono">
+                    {["Init_Win_bytes_backward", "Destination Port", "Flow_Duration"].map((feat) => {
+                      const isChecked = selectedFeatures.includes(feat);
+                      return (
+                        <label key={feat} className="flex items-center gap-2 p-2 rounded bg-bg-elevated border border-border cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedFeatures([...selectedFeatures, feat]);
+                              else setSelectedFeatures(selectedFeatures.filter((f) => f !== feat));
+                            }}
+                            className="rounded border-border text-accent-primary"
+                          />
+                          <span className="text-txt-primary">{feat}</span>
+                        </label>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
               </CardContent>
             </Card>
 

@@ -31,7 +31,15 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     let errorDetail = "API Error";
     try {
       const errJson = await res.json();
-      errorDetail = errJson.message || errJson.detail || JSON.stringify(errJson);
+      if (errJson && typeof errJson.detail === "object" && errJson.detail.message) {
+        errorDetail = errJson.detail.message;
+      } else if (errJson.message) {
+        errorDetail = errJson.message;
+      } else if (typeof errJson.detail === "string") {
+        errorDetail = errJson.detail;
+      } else {
+        errorDetail = JSON.stringify(errJson);
+      }
     } catch {
       errorDetail = await res.text();
     }

@@ -125,25 +125,22 @@ export const FindingsScreen: React.FC = () => {
             <div className="flex rounded-lg border border-border bg-bg-card p-1 text-xs">
               <button
                 onClick={() => setActiveTab("overview")}
-                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-                  activeTab === "overview" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
-                }`}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${activeTab === "overview" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
+                  }`}
               >
                 1. Comprehensive Results
               </button>
               <button
                 onClick={() => setActiveTab("class_deepdive")}
-                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-                  activeTab === "class_deepdive" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
-                }`}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${activeTab === "class_deepdive" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
+                  }`}
               >
                 2. Class Deep-Dive
               </button>
               <button
                 onClick={() => setActiveTab("recommendations")}
-                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-                  activeTab === "recommendations" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
-                }`}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${activeTab === "recommendations" ? "bg-accent-primary text-white shadow-sm" : "text-txt-muted hover:text-txt-primary"
+                  }`}
               >
                 3. Recommendations
               </button>
@@ -163,11 +160,10 @@ export const FindingsScreen: React.FC = () => {
             <button
               key={c.class}
               onClick={() => setSelectedClass(c.class)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                isSelected
-                  ? "bg-accent-primary text-white shadow-sm border border-accent-primary/40 font-bold"
-                  : "bg-bg-elevated/70 text-txt-secondary border border-border hover:bg-bg-elevated hover:text-txt-primary"
-              }`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${isSelected
+                ? "bg-accent-primary text-white shadow-sm border border-accent-primary/40 font-bold"
+                : "bg-bg-elevated/70 text-txt-secondary border border-border hover:bg-bg-elevated hover:text-txt-primary"
+                }`}
             >
               <span>{c.class}</span>
               {c.sfi.flag && <span className="h-2 w-2 rounded-full bg-status-block shrink-0" />}
@@ -505,9 +501,8 @@ export const FindingsScreen: React.FC = () => {
                     <tr
                       key={c.class}
                       onClick={() => setSelectedClass(c.class)}
-                      className={`cursor-pointer transition-colors ${
-                        c.class === activeClass ? "bg-accent-primary/10" : "hover:bg-bg-elevated/40"
-                      }`}
+                      className={`cursor-pointer transition-colors ${c.class === activeClass ? "bg-accent-primary/10" : "hover:bg-bg-elevated/40"
+                        }`}
                     >
                       <td className="p-3 font-semibold text-txt-primary flex items-center gap-2">
                         {c.class}
@@ -662,26 +657,29 @@ export const FindingsScreen: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* THE TWO EQUALLY VALID CHOICES AT STEP 8                                   */}
+      {/* NEXT ACTIONS AT STEP 8: IMPROVE OR GENERATE REPORT                        */}
       {/* ========================================================================= */}
       <div className="p-5 rounded-xl border border-border bg-bg-card space-y-4">
         <div>
-          <h4 className="text-sm font-bold text-txt-primary">Next Steps: Choose Your Path</h4>
+          <h4 className="text-sm font-bold text-txt-primary">Next Steps: Dataset Actions</h4>
           <p className="text-xs text-txt-muted mt-1 leading-relaxed">
-            Remediation is an optional experimental follow-up to test what-if hypotheses. If you only wish to document the original dataset, you can skip remediation and download the final audit report directly.
+            Review your findings above, then proceed to the Dataset Improvement Centre to inspect prioritized, actionable repair plans, or generate your authoritative audit certificate directly.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-          {/* Option 0: Improvement Centre (NEW) */}
-          <div className="p-4 rounded-xl border border-accent-primary/50 bg-accent-primary/5 flex flex-col justify-between space-y-3">
-            <div className="space-y-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          {/* Choice 1: Improve My Dataset */}
+          <div className="p-5 rounded-xl border border-accent-primary/50 bg-accent-primary/5 flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Wrench className="h-4 w-4 text-accent-primary" />
-                <h5 className="font-bold text-xs text-txt-primary">Improve My Dataset <span className="text-accent-secondary text-[9px] font-bold uppercase tracking-wider ml-1">NEW</span></h5>
+                <Wrench className="h-5 w-5 text-accent-primary" />
+                <h5 className="font-bold text-sm text-txt-primary">Improve My Dataset</h5>
+                <span className="text-accent-secondary text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-accent-primary/10 border border-accent-primary/30">
+                  Recommended
+                </span>
               </div>
-              <p className="text-[11px] text-txt-muted leading-relaxed">
-                Get intelligent, evidence-based repair recommendations. Select fixes, preview RSM safety assessment, and produce a corrected dataset with before/after comparison.
+              <p className="text-xs text-txt-muted leading-relaxed">
+                Open the Dataset Improvement Centre to inspect intelligent repair recommendations, preview safety constraints with the Remediation Safety Monitor (RSM), apply approved corrections, and compare before/after performance on the locked test set.
               </p>
             </div>
             <Button
@@ -692,48 +690,24 @@ export const FindingsScreen: React.FC = () => {
                 navigate("/improvement");
               }}
             >
-              <Wrench className="h-3.5 w-3.5" />
-              Improve My Dataset <ArrowRight className="h-3.5 w-3.5" />
+              <Wrench className="h-4 w-4" />
+              Improve My Dataset <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
 
-          {/* Option A: Explore Remediation */}
-          <div className="p-4 rounded-xl border border-border bg-bg-elevated/70 flex flex-col justify-between space-y-3">
-            <div className="space-y-1">
+          {/* Choice 2: Generate Final Report */}
+          <div className="p-5 rounded-xl border border-border bg-bg-elevated flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Sliders className="h-4 w-4 text-accent-secondary" />
-                <h5 className="font-bold text-xs text-txt-primary">Path A · Explore Remediation (Optional)</h5>
+                <FileCheck className="h-5 w-5 text-accent-secondary" />
+                <h5 className="font-bold text-sm text-txt-primary">Generate Final Audit Report</h5>
               </div>
-              <p className="text-[11px] text-txt-muted leading-relaxed">
-                Investigate whether a proposed correction (R1 Feature Ablation or R2 Flow Quarantine) changes the model's behavior, supervised by the Remediation Safety Monitor (RSM).
+              <p className="text-xs text-txt-muted leading-relaxed">
+                Document and certify the original benchmark dataset findings without applying experimental modifications. Generates an authoritative, self-contained offline HTML audit certificate with cryptographic fingerprints and research metrics.
               </p>
             </div>
             <Button
-              variant="outline"
-              size="md"
-              className="gap-2 font-bold w-full"
-              onClick={() => {
-                setActiveStage("REMEDIATION");
-                navigate("/remediation");
-              }}
-            >
-              Explore Remediation <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-
-          {/* Option B: Skip Remediation — Go to Final Report */}
-          <div className="p-4 rounded-xl border border-accent-primary/50 bg-accent-primary/5 flex flex-col justify-between space-y-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <FileCheck className="h-4 w-4 text-accent-primary" />
-                <h5 className="font-bold text-xs text-txt-primary">Path B · Skip Remediation — Go to Final Report</h5>
-              </div>
-              <p className="text-[11px] text-txt-muted leading-relaxed">
-                Finish the original dataset audit without modifying anything. Export an authoritative offline HTML audit certificate documenting the intact benchmark.
-              </p>
-            </div>
-            <Button
-              variant="primary"
+              variant="secondary"
               size="md"
               className="gap-2 font-bold w-full"
               onClick={() => {
@@ -742,7 +716,8 @@ export const FindingsScreen: React.FC = () => {
                 navigate("/reports");
               }}
             >
-              Skip Remediation — Go to Final Report <ArrowRight className="h-3.5 w-3.5" />
+              <FileCheck className="h-4 w-4" />
+              Generate Final Report <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </div>

@@ -36,6 +36,8 @@ export const DatasetScreen: React.FC = () => {
     setDatasetPreview,
     datasetValidation,
     setDatasetValidation,
+    auditConfig,
+    setAuditConfig,
     viewMode,
   } = useAuditContext();
 
@@ -45,25 +47,42 @@ export const DatasetScreen: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [validating, setValidating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorCategory, setErrorCategory] = useState<"LOAD_ERROR" | "PARAM_ERROR" | "SERVER_ERROR" | null>(null);
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string | null>(null);
   const [copiedHash, setCopiedHash] = useState(false);
 
   // Form parameters
-  const [selectedId, setSelectedId] = useState<string>(activeDatasetId || "cic2017_sample_planted");
-  const [labelCol, setLabelCol] = useState<string>("Label");
-  const [benignLabel, setBenignLabel] = useState<string>("BENIGN");
-  const [seed, setSeed] = useState<number>(42);
-  const [maxRows, setMaxRows] = useState<number>(20000);
+  const [selectedId, setSelectedId] = useState<string>(activeDatasetId || "");
+  const [labelCol, setLabelCol] = useState<string>(auditConfig?.labelCol || "Label");
+  const [benignLabel, setBenignLabel] = useState<string>(auditConfig?.benignLabel || "BENIGN");
+  const [seed, setSeed] = useState<number>(auditConfig?.seed ?? 42);
+  const [maxRows, setMaxRows] = useState<number>(auditConfig?.maxRows ?? 20000);
+
+  // Sync parameters with global auditConfig
+  useEffect(() => {
+    setAuditConfig({
+      seed: Number.isInteger(seed) && seed >= 0 ? seed : 42,
+      labelCol,
+      benignLabel,
+      maxRows,
+    });
+  }, [seed, labelCol, benignLabel, maxRows, setAuditConfig]);
 
   // Load available datasets on mount
   useEffect(() => {
     loadDatasetsList();
   }, []);
 
-  // When selectedId changes, load details
+  // When selectedId changes, load details or clear
   useEffect(() => {
     if (selectedId) {
+      setActiveDatasetId(selectedId);
       loadDatasetDetails(selectedId);
+    } else {
+      setActiveDatasetId(null);
+      setDatasetMetadata(null);
+      setDatasetPreview(null);
+      setDatasetValidation(null);
     }
   }, [selectedId]);
 
@@ -79,21 +98,24 @@ export const DatasetScreen: React.FC = () => {
   const loadDatasetDetails = async (id: string) => {
     setLoading(true);
     setErrorMsg(null);
+    setErrorCategory(null);
     try {
       const meta = await api.getDatasetMetadata(id);
       setDatasetMetadata(meta);
+      const targetLabel = meta.label_col || labelCol;
+      const targetBenign = meta.benign_label || benignLabel;
       if (meta.label_col) setLabelCol(meta.label_col);
       if (meta.benign_label) setBenignLabel(meta.benign_label);
 
       const prev = await api.getDatasetPreview(id, 25);
       setDatasetPreview(prev);
-      setActiveDatasetId(id);
 
       // Auto-validate standard benchmark samples
       if (meta.status === "validated" || (meta.label_col && meta.benign_label)) {
-        runValidation(id, meta.label_col || labelCol, meta.benign_label || benignLabel);
+        runValidation(id, targetLabel, targetBenign);
       }
     } catch (err: any) {
+      setErrorCategory("LOAD_ERROR");
       setErrorMsg(err.message || "Failed to load dataset details");
     } finally {
       setLoading(false);
@@ -103,6 +125,7 @@ export const DatasetScreen: React.FC = () => {
   const handleFileUpload = async (file: File) => {
     setUploading(true);
     setErrorMsg(null);
+    setErrorCategory(null);
     setUploadSuccessMsg(null);
     try {
       const res = await api.uploadDataset(file, labelCol, benignLabel);
@@ -111,6 +134,7 @@ export const DatasetScreen: React.FC = () => {
       setActiveDatasetId(res.dataset_id);
       setUploadSuccessMsg(`Dataset uploaded successfully. Generated ID: ${res.dataset_id}`);
     } catch (err: any) {
+      setErrorCategory("LOAD_ERROR");
       setErrorMsg(err.message || "File upload failed");
     } finally {
       setUploading(false);
@@ -118,18 +142,39 @@ export const DatasetScreen: React.FC = () => {
   };
 
   const runValidation = async (id: string, lbl: string, bng: string) => {
+    if (!id) return;
     setValidating(true);
     setErrorMsg(null);
+    setErrorCategory(null);
+
+    // Validate integer seed
+    const effectiveSeed = Number.isInteger(seed) && seed >= 0 ? seed : 42;
+    if (isNaN(seed) || seed < 0) {
+      setErrorCategory("PARAM_ERROR");
+      setErrorMsg("Random seed must be a non-negative integer (e.g. 42).");
+      setValidating(false);
+      return;
+    }
+
     try {
       const valRes = await api.validateDataset(id, {
         label_col: lbl,
         benign_label: bng,
-        seed,
+        seed: effectiveSeed,
         max_rows_per_class: maxRows,
       });
       setDatasetValidation(valRes);
+      if (!valRes.valid) {
+        setErrorCategory("PARAM_ERROR");
+        setErrorMsg(
+          valRes.warnings && valRes.warnings.length > 0
+            ? valRes.warnings.join("; ")
+            : "Validation parameters mismatch: verify that ground-truth column and benign class exist in schema."
+        );
+      }
     } catch (err: any) {
-      setErrorMsg(err.message || "Validation failed");
+      setErrorCategory("SERVER_ERROR");
+      setErrorMsg(err.message || "Validation request failed");
       setDatasetValidation({
         valid: false,
         schema_id: "error",
@@ -203,10 +248,26 @@ export const DatasetScreen: React.FC = () => {
       </div>
 
       {errorMsg && (
-        <div className="p-4 rounded-xl border border-rose-800/80 bg-rose-950/40 text-rose-200 text-xs flex items-start gap-3">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+        <div
+          className={`p-4 rounded-xl border text-xs flex items-start gap-3 ${
+            errorCategory === "PARAM_ERROR"
+              ? "border-amber-800/80 bg-amber-950/40 text-amber-200"
+              : "border-rose-800/80 bg-rose-950/40 text-rose-200"
+          }`}
+        >
+          <AlertTriangle
+            className={`h-4 w-4 shrink-0 mt-0.5 ${
+              errorCategory === "PARAM_ERROR" ? "text-amber-400" : "text-rose-400"
+            }`}
+          />
           <div className="space-y-1">
-            <p className="font-bold">Dataset Error</p>
+            <p className="font-bold">
+              {errorCategory === "PARAM_ERROR"
+                ? "Validation Parameter Notice"
+                : errorCategory === "LOAD_ERROR"
+                ? "Dataset Loading Notice"
+                : "Validation Check Notice"}
+            </p>
             <p className="leading-relaxed">{errorMsg}</p>
           </div>
         </div>
@@ -246,6 +307,7 @@ export const DatasetScreen: React.FC = () => {
                     onChange={(e) => setSelectedId(e.target.value)}
                     className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-xs font-mono text-txt-primary focus:border-accent-primary focus:outline-none"
                   >
+                    <option value="">None — Do not select a benchmark dataset</option>
                     <option value="cic2017_sample_planted">
                       CIC-IDS-2017 Sample (Planted PortScan Shortcut) (cic-ids-2017)
                     </option>
@@ -259,7 +321,13 @@ export const DatasetScreen: React.FC = () => {
                   </select>
                 </div>
 
-                {datasetMetadata && (
+                {!selectedId && (
+                  <div className="p-3 rounded-lg border border-dashed border-border text-center text-xs text-txt-muted">
+                    No benchmark dataset selected. Select a benchmark above or upload your custom CSV/Parquet file in Option B.
+                  </div>
+                )}
+
+                {selectedId && datasetMetadata && (
                   <div className="p-3 rounded-lg border border-border bg-bg-elevated space-y-2 text-xs font-mono">
                     <div className="flex justify-between">
                       <span className="text-txt-muted">Source Basename:</span>
@@ -339,14 +407,20 @@ export const DatasetScreen: React.FC = () => {
           {/* Action Footer */}
           <div className="p-4 rounded-xl border border-border bg-bg-card flex items-center justify-between">
             <div className="text-xs text-txt-muted">
-              Active Dataset: <strong className="text-txt-primary font-mono">{selectedId}</strong>
+              Active Dataset:{" "}
+              {selectedId ? (
+                <strong className="text-txt-primary font-mono">{selectedId}</strong>
+              ) : (
+                <span className="text-amber-400 font-mono">None selected</span>
+              )}
             </div>
             <Button
               variant="primary"
               size="md"
               className="gap-2 font-bold"
+              disabled={!selectedId || !datasetMetadata}
               onClick={() => {
-                if (datasetMetadata) {
+                if (datasetMetadata && selectedId) {
                   runValidation(selectedId, labelCol, benignLabel);
                 }
                 setCurrentStep("2_VALIDATION");
@@ -370,6 +444,25 @@ export const DatasetScreen: React.FC = () => {
             </p>
           </div>
 
+          {/* Datalists for schema column suggestions and distinct class values */}
+          <datalist id="schema-columns-list">
+            {datasetMetadata?.columns?.map((col) => (
+              <option key={col} value={col} />
+            ))}
+            {datasetPreview?.columns?.map((col) => (
+              <option key={col} value={col} />
+            ))}
+          </datalist>
+
+          <datalist id="schema-classes-list">
+            {datasetValidation?.unique_classes?.map((cls) => (
+              <option key={cls} value={cls} />
+            ))}
+            {Object.keys(datasetMetadata?.class_counts || {}).map((cls) => (
+              <option key={cls} value={cls} />
+            ))}
+          </datalist>
+
           {/* Configuration for Validation */}
           <Card>
             <CardHeader className="py-3 px-4">
@@ -383,28 +476,52 @@ export const DatasetScreen: React.FC = () => {
                   <label className="text-txt-muted block mb-1 text-[11px] font-semibold">Ground-Truth Label Column</label>
                   <input
                     type="text"
+                    list="schema-columns-list"
                     value={labelCol}
                     onChange={(e) => setLabelCol(e.target.value)}
                     className="w-full rounded border border-border bg-bg-elevated px-2.5 py-1.5 font-mono text-xs text-txt-primary focus:border-accent-primary focus:outline-none"
+                    placeholder="e.g. Label"
                   />
+                  {datasetMetadata && datasetMetadata.columns.length > 0 && !datasetMetadata.columns.includes(labelCol) && labelCol !== datasetMetadata.label_col && (
+                    <span className="text-[10px] text-amber-400 block mt-0.5">
+                      Column not in feature list.
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label className="text-txt-muted block mb-1 text-[11px] font-semibold">Benign Class Identifier</label>
                   <input
                     type="text"
+                    list="schema-classes-list"
                     value={benignLabel}
                     onChange={(e) => setBenignLabel(e.target.value)}
                     className="w-full rounded border border-border bg-bg-elevated px-2.5 py-1.5 font-mono text-xs text-txt-primary focus:border-accent-primary focus:outline-none"
+                    placeholder="e.g. BENIGN"
                   />
+                  {datasetValidation && datasetValidation.unique_classes.length > 0 && !datasetValidation.unique_classes.includes(benignLabel) && (
+                    <span className="text-[10px] text-amber-400 block mt-0.5">
+                      Class not detected in unique labels.
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label className="text-txt-muted block mb-1 text-[11px] font-semibold">Random Seed</label>
                   <input
                     type="number"
+                    min="0"
+                    step="1"
                     value={seed}
-                    onChange={(e) => setSeed(Number(e.target.value))}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setSeed(isNaN(val) ? 0 : Math.max(0, val));
+                    }}
                     className="w-full rounded border border-border bg-bg-elevated px-2.5 py-1.5 font-mono text-xs text-txt-primary focus:border-accent-primary focus:outline-none"
                   />
+                  {(isNaN(seed) || seed < 0) && (
+                    <span className="text-[10px] text-rose-400 block mt-0.5">
+                      Seed must be an integer ≥ 0.
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-end">
                   <Button
@@ -412,6 +529,7 @@ export const DatasetScreen: React.FC = () => {
                     size="md"
                     className="w-full gap-2 text-xs"
                     isLoading={validating}
+                    disabled={!selectedId}
                     onClick={() => runValidation(selectedId, labelCol, benignLabel)}
                   >
                     <RefreshCw className="h-3.5 w-3.5" /> Re-Run Health Check

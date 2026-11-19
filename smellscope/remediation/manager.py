@@ -492,6 +492,27 @@ def rebenchmark(
     rem_train_ids = set(remediated_view["_included_row_ids"])
     assert_test_untouched(split, rem_train_ids)
     rem_train_df = df[df["__row_id"].isin(rem_train_ids)].copy()
+    rem_test_df = test_df.copy()
+
+    # Apply view transformations (imputation and infinite clipping)
+    imputations = remediated_view.get("_imputations", {})
+    for col, med in imputations.items():
+        if col in rem_train_df.columns:
+            rem_train_df[col] = rem_train_df[col].fillna(med)
+        if col in rem_test_df.columns:
+            rem_test_df[col] = rem_test_df[col].fillna(med)
+
+    clean_inf_cols = remediated_view.get("_clean_inf_cols", [])
+    for col in clean_inf_cols:
+        if col in rem_train_df.columns and pd.api.types.is_numeric_dtype(rem_train_df[col]):
+            finite_vals = rem_train_df.loc[np.isfinite(rem_train_df[col]), col]
+            if len(finite_vals) > 0:
+                cap_max = float(finite_vals.quantile(0.99))
+                cap_min = float(finite_vals.quantile(0.01))
+                rem_train_df[col] = rem_train_df[col].replace([np.inf], cap_max).replace([-np.inf], cap_min)
+                if col in rem_test_df.columns:
+                    rem_test_df[col] = rem_test_df[col].replace([np.inf], cap_max).replace([-np.inf], cap_min)
+
     rem_features = [f for f in all_features if f not in remediated_view["excluded_features"]]
 
     # Evaluate before
@@ -509,7 +530,7 @@ def rebenchmark(
     # Evaluate after
     eval_after = fit_and_evaluate(
         train_df=rem_train_df,
-        test_df=test_df,
+        test_df=rem_test_df,
         label_col=label_col,
         benign_label=benign_label,
         feature_cols=rem_features,
@@ -676,6 +697,7 @@ def generate_repair_plan_preview(
             "features_to_drop": features_changed_list,
             "impute_cols": sorted(list(impute_cols)),
             "clean_inf_cols": sorted(list(clean_inf_cols)),
+            "dedup_requested": dedup_requested,
             "quarantined_count": affected_rows_count,
             "selected_rec_ids": [r.get("id") for r in selected_recs if r.get("id")],
         },
@@ -759,14 +781,15 @@ def apply_repair_plan(
     quarantined_ids: set[int] = set()
 
     # Re-evaluate dedup and quarantine if specified
-    if preview.get("affected", {}).get("n_rows", 0) > 0:
-        # Deduplication
+    dedup_requested = params.get("dedup_requested", False)
+    if dedup_requested or preview.get("affected", {}).get("n_rows", 0) > 0:
         cols_for_dup = [
             c for c in train_subset.columns
             if c not in (label_col, "__row_id") and c not in new_excluded_features
         ]
-        dup_mask = train_subset[cols_for_dup].duplicated()
-        quarantined_ids.update(set(train_subset.loc[dup_mask, "__row_id"]))
+        if cols_for_dup:
+            dup_mask = train_subset[cols_for_dup].duplicated()
+            quarantined_ids.update(set(train_subset.loc[dup_mask, "__row_id"]))
 
     new_train_ids = [rid for rid in current_train_ids if rid not in quarantined_ids]
 
@@ -782,18 +805,6 @@ def apply_repair_plan(
 
     curr_num = int(view["view_id"].replace("view_", "")) if "view_" in view["view_id"] else 0
     new_view_id = f"view_{curr_num + 1:04d}"
-
-    new_view: Dict[str, Any] = {
-        "view_id": new_view_id,
-        "parent_view_id": view["view_id"],
-        "split_hash": split_hash,
-        "n_included": len(new_train_ids),
-        "included_hash": included_hash,
-        "excluded_features": new_excluded_features,
-        "quarantined_count": view["quarantined_count"] + len(quarantined_ids),
-        "view_hash": new_view_hash,
-        "_included_row_ids": new_train_ids,
-    }
 
     entry_id = f"log_{uuid.uuid4().hex[:8]}"
     change_log_entry: Dict[str, Any] = {
@@ -812,22 +823,53 @@ def apply_repair_plan(
     }
 
     # Construct the actual exported corrected dataset dataframe
-    # 1. Training rows: impute missing, drop excluded features, drop duplicate rows
+    # 1. Partitions
     corrected_train = df[df["__row_id"].isin(new_train_ids)].copy()
+    val_rows = df[df["__row_id"].isin(split.get("val_ids", []))].copy()
     test_rows = df[df["__row_id"].isin(split["test_ids"])].copy()
+
+    # Clean infinite values (clip to 99th and 1st percentile of finite training distribution)
+    clean_inf_cols = params.get("clean_inf_cols", [])
+    for c in clean_inf_cols:
+        if c in corrected_train.columns and pd.api.types.is_numeric_dtype(corrected_train[c]):
+            finite_train = corrected_train.loc[np.isfinite(corrected_train[c]), c]
+            if len(finite_train) > 0:
+                cap_max = float(finite_train.quantile(0.99))
+                cap_min = float(finite_train.quantile(0.01))
+                corrected_train[c] = corrected_train[c].replace([np.inf], cap_max).replace([-np.inf], cap_min)
+                if c in val_rows.columns:
+                    val_rows[c] = val_rows[c].replace([np.inf], cap_max).replace([-np.inf], cap_min)
+                if c in test_rows.columns:
+                    test_rows[c] = test_rows[c].replace([np.inf], cap_max).replace([-np.inf], cap_min)
 
     # Apply train median imputation
     impute_cols = params.get("impute_cols", [])
+    imputed_medians = {}
     for c in impute_cols:
         if c in corrected_train.columns and pd.api.types.is_numeric_dtype(corrected_train[c]):
-            med = corrected_train[c].median()
+            med = float(corrected_train[c].median())
+            imputed_medians[c] = med
             corrected_train[c] = corrected_train[c].fillna(med)
+            if c in val_rows.columns:
+                val_rows[c] = val_rows[c].fillna(med)
             if c in test_rows.columns:
                 test_rows[c] = test_rows[c].fillna(med)
 
-    # Drop excluded features from both
+    # Drop excluded features from all partitions
     remaining_cols = [c for c in df.columns if c not in new_excluded_features and c != "__row_id"]
-    corrected_full = pd.concat([corrected_train[remaining_cols], test_rows[remaining_cols]], ignore_index=True)
+    parts_to_concat = [corrected_train[remaining_cols]]
+    if len(val_rows) > 0:
+        parts_to_concat.append(val_rows[remaining_cols])
+    if len(test_rows) > 0:
+        parts_to_concat.append(test_rows[remaining_cols])
+    corrected_full = pd.concat(parts_to_concat, ignore_index=True)
+
+    # Determine whether changes actually occurred
+    n_rows_dropped = len(quarantined_ids)
+    n_features_dropped = len(features_to_drop)
+    n_imputed = len(impute_cols)
+    n_inf_cleaned = len(clean_inf_cols)
+    has_modifications = (n_rows_dropped > 0 or n_features_dropped > 0 or n_imputed > 0 or n_inf_cleaned > 0)
 
     # Save versioned dataset file to disk
     repaired_dir = Path("./data/repaired")
@@ -842,6 +884,21 @@ def apply_repair_plan(
             hasher.update(chunk)
     file_sha256 = hasher.hexdigest()
 
+    new_view: Dict[str, Any] = {
+        "view_id": new_view_id,
+        "parent_view_id": view["view_id"],
+        "split_hash": split_hash,
+        "n_included": len(new_train_ids),
+        "included_hash": included_hash,
+        "excluded_features": new_excluded_features,
+        "quarantined_count": view["quarantined_count"] + len(quarantined_ids),
+        "view_hash": new_view_hash,
+        "_included_row_ids": new_train_ids,
+        "_imputations": {str(k): float(v) for k, v in imputed_medians.items()},
+        "_clean_inf_cols": list(clean_inf_cols),
+        "_repaired_file": str(export_csv_path),
+    }
+
     export_metadata: Dict[str, Any] = {
         "file_path": str(export_csv_path.resolve()),
         "filename": export_csv_path.name,
@@ -849,6 +906,12 @@ def apply_repair_plan(
         "total_rows": len(corrected_full),
         "total_columns": len(remaining_cols),
         "view_id": new_view_id,
+        "status": "MODIFIED" if has_modifications else "NO_CHANGE",
+        "explanation": (
+            f"Successfully applied repair plan: {preview.get('reason', 'repaired dataset')}"
+            if has_modifications
+            else "Selected repairs produced no data modifications (no eligible issues or features were modified)."
+        ),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -874,8 +937,23 @@ def get_dataset_comparison(
     orig_train_ids = set(original_view["_included_row_ids"])
     rem_train_ids = set(remediated_view["_included_row_ids"])
 
-    orig_df = df[df["__row_id"].isin(orig_train_ids)]
-    rem_df = df[df["__row_id"].isin(rem_train_ids)]
+    orig_df = df[df["__row_id"].isin(orig_train_ids)].copy()
+    rem_df = df[df["__row_id"].isin(rem_train_ids)].copy()
+
+    # Apply view transformations (imputation and infinite clipping)
+    imputations = remediated_view.get("_imputations", {})
+    for col, med in imputations.items():
+        if col in rem_df.columns:
+            rem_df[col] = rem_df[col].fillna(med)
+
+    clean_inf_cols = remediated_view.get("_clean_inf_cols", [])
+    for col in clean_inf_cols:
+        if col in rem_df.columns and pd.api.types.is_numeric_dtype(rem_df[col]):
+            finite_vals = rem_df.loc[np.isfinite(rem_df[col]), col]
+            if len(finite_vals) > 0:
+                cap_max = float(finite_vals.quantile(0.99))
+                cap_min = float(finite_vals.quantile(0.01))
+                rem_df[col] = rem_df[col].replace([np.inf], cap_max).replace([-np.inf], cap_min)
 
     all_feat_cols = [c for c in df.columns if c not in (label_col, "__row_id")]
     orig_features = [f for f in all_feat_cols if f not in original_view["excluded_features"]]

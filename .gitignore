@@ -20,7 +20,7 @@ frontend/playwright-report/
 
 # SmellScope Local Runtime Artifacts
 runs/
-reports/
+/reports/
 data/uploads/
 data/repaired/*.csv
 master_prompt.md

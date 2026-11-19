@@ -17,6 +17,13 @@ export type WorkflowStage =
   | "REMEDIATE"
   | "VERIFY";
 
+export interface AuditConfig {
+  seed: number;
+  labelCol: string;
+  benignLabel: string;
+  maxRows: number;
+}
+
 interface AuditContextType {
   activeDatasetId: string | null;
   setActiveDatasetId: (id: string | null) => void;
@@ -39,6 +46,10 @@ interface AuditContextType {
   datasetValidation: DatasetValidateResponse | null;
   setDatasetValidation: (val: DatasetValidateResponse | null) => void;
 
+  // Validation & Audit Parameters
+  auditConfig: AuditConfig;
+  setAuditConfig: React.Dispatch<React.SetStateAction<AuditConfig>>;
+
   // Remediation Workflow Status (Decoupled & Optional)
   remediationSkipped: boolean;
   setRemediationSkipped: (skipped: boolean) => void;
@@ -56,7 +67,7 @@ const AuditContext = createContext<AuditContextType | undefined>(undefined);
 
 export const AuditProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeDatasetId, _setActiveDatasetId] = useState<string | null>(() => {
-    return localStorage.getItem("smellscope_active_dataset") || "cic2017_sample_planted";
+    return localStorage.getItem("smellscope_active_dataset") || null;
   });
   const [activeRunId, setActiveRunId] = useState<string | null>(() => {
     return localStorage.getItem("smellscope_active_run") || null;
@@ -73,6 +84,14 @@ export const AuditProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [datasetMetadata, setDatasetMetadata] = useState<DatasetMetadata | null>(null);
   const [datasetPreview, setDatasetPreview] = useState<DatasetPreview | null>(null);
   const [datasetValidation, setDatasetValidation] = useState<DatasetValidateResponse | null>(null);
+
+  // Validation & Audit Parameters
+  const [auditConfig, setAuditConfig] = useState<AuditConfig>(() => ({
+    seed: 42,
+    labelCol: "Label",
+    benignLabel: "BENIGN",
+    maxRows: 20000,
+  }));
 
   // Remediation State
   const [remediationSkipped, setRemediationSkipped] = useState<boolean>(false);
@@ -108,7 +127,11 @@ export const AuditProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   useEffect(() => {
-    if (activeDatasetId) localStorage.setItem("smellscope_active_dataset", activeDatasetId);
+    if (activeDatasetId) {
+      localStorage.setItem("smellscope_active_dataset", activeDatasetId);
+    } else {
+      localStorage.removeItem("smellscope_active_dataset");
+    }
   }, [activeDatasetId]);
 
   useEffect(() => {
@@ -183,6 +206,8 @@ export const AuditProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setDatasetPreview,
         datasetValidation,
         setDatasetValidation,
+        auditConfig,
+        setAuditConfig,
         remediationSkipped,
         setRemediationSkipped,
         viewMode,

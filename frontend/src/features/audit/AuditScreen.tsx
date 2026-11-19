@@ -40,18 +40,20 @@ export const AuditScreen: React.FC = () => {
     selectedClass,
     setSelectedClass,
     setActiveStage,
+    auditConfig,
     viewMode,
   } = useAuditContext();
 
   const [currentStep, setCurrentStep] = useState<AuditSubStep>("4_HEURISTICS");
   const [auditRunning, setAuditRunning] = useState(false);
   const [auditProgress, setAuditProgress] = useState<{
+    status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPED";
     step: number;
     total: number;
     percent: number;
     currentClass: string;
     elapsed: number;
-  }>({ step: 0, total: 6, percent: 0, currentClass: "Initializing", elapsed: 0 });
+  }>({ status: "PENDING", step: 0, total: 6, percent: 0, currentClass: "Initializing", elapsed: 0 });
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showMathDetails, setShowMathDetails] = useState(false);
@@ -80,12 +82,20 @@ export const AuditScreen: React.FC = () => {
     if (!activeDatasetId) return;
     setAuditRunning(true);
     setErrorMsg(null);
+    setAuditProgress({
+      status: "RUNNING",
+      step: 1,
+      total: 6,
+      percent: 5,
+      currentClass: selectedClass || "Initializing",
+      elapsed: 0,
+    });
 
     try {
       const startRes = await api.startAudit({
         dataset_id: activeDatasetId,
-        seed: 42,
-        max_rows_per_class: 20000,
+        seed: auditConfig?.seed ?? 42,
+        max_rows_per_class: auditConfig?.maxRows ?? 20000,
       });
 
       const runId = startRes.run_id;
@@ -96,6 +106,7 @@ export const AuditScreen: React.FC = () => {
         try {
           const st = await api.getAuditStatus(runId);
           setAuditProgress({
+            status: st.status as any,
             step: st.current_step,
             total: st.total_steps,
             percent: st.progress_percent,
@@ -240,19 +251,24 @@ export const AuditScreen: React.FC = () => {
           {auditRunning && (
             <div className="rounded-lg bg-bg-card p-4 border border-border space-y-2.5">
               <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-accent-secondary font-bold">
-                  Class: {auditProgress.currentClass}
-                </span>
-                <span className="text-txt-primary font-bold">{auditProgress.percent}%</span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-accent-primary/20 text-accent-secondary border border-accent-primary/40">
+                    {auditProgress.status}
+                  </span>
+                  <span className="text-txt-primary font-bold">
+                    Class: {auditProgress.currentClass}
+                  </span>
+                </div>
+                <span className="text-accent-secondary font-bold font-mono">{auditProgress.percent}%</span>
               </div>
               <div className="w-full bg-bg-elevated rounded-full h-2 overflow-hidden">
                 <div
                   className="bg-accent-primary h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${auditProgress.percent}%` }}
+                  style={{ width: `${Math.min(100, Math.max(5, auditProgress.percent))}%` }}
                 />
               </div>
               <div className="flex justify-between text-[11px] text-txt-muted font-mono">
-                <span>Step {auditProgress.step}/{auditProgress.total}</span>
+                <span>Phase {auditProgress.step}/{auditProgress.total}</span>
                 <span>{auditProgress.elapsed}s elapsed</span>
               </div>
             </div>
@@ -432,11 +448,13 @@ export const AuditScreen: React.FC = () => {
                 </div>
                 <div className="p-3 rounded-lg border border-border bg-bg-elevated">
                   <span className="text-[10px] text-txt-muted block uppercase">Tree Estimators</span>
-                  <strong className="text-txt-primary text-xs mt-0.5 block">100 Trees (max_depth=12)</strong>
+                  <strong className="text-txt-primary text-xs mt-0.5 block">100 Trees (max_depth=None)</strong>
                 </div>
                 <div className="p-3 rounded-lg border border-border bg-bg-elevated">
                   <span className="text-[10px] text-txt-muted block uppercase">Random Seed</span>
-                  <strong className="text-txt-primary text-xs mt-0.5 block">Seed = 42 (Deterministic)</strong>
+                  <strong className="text-txt-primary text-xs mt-0.5 block">
+                    Seed = {classData.meta?.seed ?? auditConfig?.seed ?? 42} (Deterministic)
+                  </strong>
                 </div>
                 <div className="p-3 rounded-lg border border-border bg-bg-elevated">
                   <span className="text-[10px] text-txt-muted block uppercase">Partition Split</span>
@@ -479,6 +497,44 @@ export const AuditScreen: React.FC = () => {
             </p>
           </div>
 
+          {/* NA Reason Alert if SFI was not applicable */}
+          {(classData.na_reasons?.["sfi"] || classData.na_reasons?.["sfi.recall_baseline"]) && (
+            <div className="p-4 rounded-xl border border-amber-800/80 bg-amber-950/30 text-amber-200 text-xs flex items-start gap-3">
+              <Info className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold">SFI Evaluation Notice (Not Applicable)</p>
+                <p className="leading-relaxed">
+                  {classData.na_reasons["sfi"] || classData.na_reasons["sfi.recall_baseline"]}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* SFI Zero-finding State vs Flagged State Banner */}
+          {!classData.sfi.flag && !(classData.na_reasons?.["sfi"] || classData.na_reasons?.["sfi.recall_baseline"]) && (
+            <div className="p-4 rounded-xl border border-emerald-800/80 bg-emerald-950/30 text-emerald-200 text-xs flex items-start gap-3">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold">No Significant Shortcut Candidates Detected Under Current SFI Configuration</p>
+                <p className="leading-relaxed">
+                  Perturbation across candidate features did not trigger excessive recall collapse relative to the Monte Carlo null distribution (z = {classData.sfi.z !== null ? classData.sfi.z.toFixed(2) : "0.00"} &lt; 2.0). The model demonstrates gradual, graceful degradation rather than artificial shortcut dependency.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {classData.sfi.flag && (
+            <div className="p-4 rounded-xl border border-rose-800/80 bg-rose-950/30 text-rose-200 text-xs flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold">Significant Shortcut Sensitivity Detected</p>
+                <p className="leading-relaxed">
+                  Model demonstrates excessive recall collapse upon perturbing feature "{classData.sfi.top_features[0]}" (z = {classData.sfi.z !== null ? classData.sfi.z.toFixed(2) : "N/A"} &ge; 2.0). This indicates severe predictive dependency on a dataset-specific artifact.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Summary KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <MetricCard
@@ -510,6 +566,69 @@ export const AuditScreen: React.FC = () => {
               icon={<Sliders className="h-4 w-4 text-emerald-400" />}
             />
           </div>
+
+          {/* Evaluated Shortcut Candidates Table */}
+          {classData.sfi.top_features.length > 0 && (
+            <Card>
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm">Evaluated Shortcut Feature Candidates & Statistical Evidence</CardTitle>
+                <CardDescription>
+                  Permutation importance ranking on validation partition, evaluated under controlled test-set perturbation.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-bg-elevated/70 border-b border-border text-[11px] text-txt-muted uppercase font-bold">
+                    <tr>
+                      <th className="p-3">Candidate Feature</th>
+                      <th className="p-3">Controllability Category</th>
+                      <th className="p-3 text-center">Observed SFI</th>
+                      <th className="p-3 text-center">Null Mean (μ_null)</th>
+                      <th className="p-3 text-center">z-Score</th>
+                      <th className="p-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border font-mono">
+                    {classData.sfi.top_features.map((feat, idx) => {
+                      const cat = classData.sfi.categories[idx] || "UNMAPPED";
+                      const isTop = idx === 0;
+                      return (
+                        <tr key={feat} className={isTop ? "bg-accent-primary/5" : ""}>
+                          <td className="p-3 font-semibold text-txt-primary flex items-center gap-2">
+                            <span>{feat}</span>
+                            {isTop && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-primary/20 text-accent-secondary border border-accent-primary/40 font-bold">
+                                Top Candidate
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-txt-secondary">
+                            Category {cat}
+                          </td>
+                          <td className="p-3 text-center text-txt-primary font-bold">
+                            {isTop && classData.sfi.sfi_top !== null ? classData.sfi.sfi_top.toFixed(3) : "—"}
+                          </td>
+                          <td className="p-3 text-center text-txt-muted">
+                            {classData.sfi.sfi_null_mean !== null ? classData.sfi.sfi_null_mean.toFixed(3) : "—"}
+                          </td>
+                          <td className="p-3 text-center text-txt-secondary font-bold">
+                            {isTop && classData.sfi.z !== null ? classData.sfi.z.toFixed(2) : "—"}
+                          </td>
+                          <td className="p-3 text-center">
+                            {isTop && classData.sfi.flag ? (
+                              <Badge variant="danger">FLAGGED</Badge>
+                            ) : (
+                              <Badge variant="success">SAFE</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
 
           {/* SFI Decay Curve & Interactive Plotly Chart */}
           <Card>

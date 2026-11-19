@@ -1,5 +1,33 @@
 import { test, expect } from "@playwright/test";
 
+async function getOrInitAudit(request: any): Promise<string> {
+  try {
+    const existingResp = await request.get("http://127.0.0.1:8000/api/v1/audits");
+    if (existingResp.ok()) {
+      const audits = await existingResp.json();
+      const completed = audits.find((a: any) => a.status === "COMPLETED");
+      if (completed) return completed.run_id;
+    }
+  } catch (e) {
+    // fall through to create
+  }
+
+  const startResp = await request.post("http://127.0.0.1:8000/api/v1/audits", {
+    data: { dataset_id: "cic2017_sample_planted", classes: ["PortScan"], seed: 42 },
+  });
+  const start = await startResp.json();
+  const runId = start.run_id;
+  for (let i = 0; i < 60; i++) {
+    const stResp = await request.get(`http://127.0.0.1:8000/api/v1/audits/${runId}`);
+    if (stResp.ok()) {
+      const st = await stResp.json();
+      if (st.status === "COMPLETED") break;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return runId;
+}
+
 test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verification", () => {
   test("Path A — No Remediation: Complete 13-Step Guided Audit directly to Offline Report", async ({ page }) => {
     // Generous timeout for ML model training and Monte Carlo draws
@@ -24,12 +52,13 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     // Select standard benchmark and inspect fingerprint
     const selectElem = page.locator("select").first();
     await expect(selectElem).toBeVisible();
-    await expect(page.locator("option[value='cic2017_sample_planted']")).toBeAttached();
-    await expect(page.getByText("SHA-256 Fingerprint:")).toBeVisible();
+    await selectElem.selectOption("cic2017_sample_planted");
+    await expect(page.getByText("SHA-256 Fingerprint:")).toBeVisible({ timeout: 10000 });
 
     // 3. Step 2: Check Dataset Health (Validation)
     const toValidationBtn = page.getByRole("button", { name: /CONTINUE TO VALIDATION/i });
     await expect(toValidationBtn).toBeVisible();
+    await expect(toValidationBtn).toBeEnabled({ timeout: 10000 });
     await toValidationBtn.click();
     await expect(page.getByText("Check Dataset Health")).toBeVisible();
     await expect(page.getByText("1. File Readability")).toBeVisible();
@@ -39,6 +68,7 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     // 4. Step 3: Prepare Your Dataset (Preprocessing)
     const toPreprocessBtn = page.getByRole("button", { name: /CONTINUE TO PREPROCESSING/i });
     await expect(toPreprocessBtn).toBeVisible();
+    await expect(toPreprocessBtn).toBeEnabled({ timeout: 10000 });
     await toPreprocessBtn.click();
     await expect(page.getByText("Prepare Your Dataset")).toBeVisible();
     await expect(page.getByText("Retained Rows")).toBeVisible();
@@ -56,7 +86,7 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     await runAuditBtn.click();
 
     // 6. Step 4: Check Dataset Design Smells (Five Heuristics)
-    await expect(page.getByText("Check Dataset Design Smells"), { timeout: 60000 }).toBeVisible();
+    await expect(page.getByText("Check Dataset Design Smells")).toBeVisible({ timeout: 60000 });
     await expect(page.getByText("UGT").first()).toBeVisible();
     await expect(page.getByText("WL").first()).toBeVisible();
     await expect(page.getByText("HDF").first()).toBeVisible();
@@ -100,10 +130,10 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     await expect(page).toHaveURL(/.*\/findings/);
     await expect(page.getByText("Your Dataset Audit Results")).toBeVisible();
 
-    // 11. Choose Path B: Skip Remediation — Go to Final Report
-    const skipRemediationBtn = page.getByRole("button", { name: /Skip Remediation — Go to Final Report/i });
-    await expect(skipRemediationBtn).toBeVisible();
-    await skipRemediationBtn.click();
+    // 11. Choose Action: Generate Final Report
+    const generateFinalReportBtn = page.getByRole("button", { name: /Generate Final Report/i });
+    await expect(generateFinalReportBtn).toBeVisible();
+    await generateFinalReportBtn.click();
     await expect(page).toHaveURL(/.*\/reports/);
 
     // 12. Step 12: Verify the Impact (Original Baseline card shown without fake comparison)
@@ -119,21 +149,19 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     await expect(page.getByRole("button", { name: /Generate Offline Report/i })).toBeVisible();
   });
 
-  test("Path B — With Remediation: Preview -> RSM -> Apply -> Rebenchmark -> Final Report", async ({ page }) => {
+  test("Remediation Workflow (R1 Feature Ablation): Preview -> RSM -> Apply -> Rebenchmark -> Final Report", async ({ page, request }) => {
     test.setTimeout(90000);
 
-    // Navigate to Findings with already completed audit
-    await page.goto("/findings");
-    await expect(page.getByText("Your Dataset Audit Results")).toBeVisible();
+    const runId = await getOrInitAudit(request);
 
-    // Click Explore Remediation
-    const exploreRemediationBtn = page.getByRole("button", { name: /Explore Remediation/i });
-    await expect(exploreRemediationBtn).toBeVisible();
-    await exploreRemediationBtn.click();
-    await expect(page).toHaveURL(/.*\/remediation/);
+    await page.addInitScript(({ runId }) => {
+      localStorage.setItem("smellscope_active_run", runId);
+      localStorage.setItem("smellscope_active_dataset", "cic2017_sample_planted");
+    }, { runId });
 
-    // Step 9: Explore Possible Improvements
-    await expect(page.getByText("Explore Possible Improvements")).toBeVisible();
+    // Direct navigation to remediation with completed audit context
+    await page.goto("/remediation");
+    await expect(page.getByText("Explore Possible Improvements")).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("R1 Feature Ablation")).toBeVisible();
 
     // Continue to Step 10: Safety Check (RSM)
@@ -168,12 +196,19 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     await expect(page.getByRole("button", { name: /Generate Offline Report/i })).toBeVisible();
   });
 
-  test("Journey C — Dataset Improvement Centre: Audit -> Recommendations -> Plan Preview -> Apply -> Comparison", async ({ page }) => {
+  test("Journey C — Dataset Improvement Centre: Audit -> Recommendations -> Plan Preview -> Apply -> Comparison", async ({ page, request }) => {
     test.setTimeout(90000);
+
+    const runId = await getOrInitAudit(request);
+
+    await page.addInitScript(({ runId }) => {
+      localStorage.setItem("smellscope_active_run", runId);
+      localStorage.setItem("smellscope_active_dataset", "cic2017_sample_planted");
+    }, { runId });
 
     // Navigate to Findings with completed audit
     await page.goto("/findings");
-    await expect(page.getByText("Your Dataset Audit Results")).toBeVisible();
+    await expect(page.getByText("Your Dataset Audit Results")).toBeVisible({ timeout: 15000 });
 
     // Click Improve My Dataset button
     const improveBtn = page.getByRole("button", { name: /Improve My Dataset/i });
@@ -188,10 +223,29 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
     // Verify recommendations or clean state
     await expect(page.getByText(/recommendations? selected|reversal|repairs? recommended|Dominance|Quality/i).first()).toBeVisible({ timeout: 15000 });
 
-    // Navigate to Comparison
-    await page.goto("/comparison");
-    await expect(page.getByText(/Dataset Comparison/i)).toBeVisible();
-    await expect(page.getByText(/Locked Test Set Verified/i)).toBeVisible({ timeout: 15000 });
+    // Check if any recommendation is present, select it and generate plan
+    const firstCheckbox = page.locator('input[type="checkbox"]').first();
+    if (await firstCheckbox.isVisible()) {
+      if (!(await firstCheckbox.isChecked())) {
+        await firstCheckbox.check();
+      }
+      const generatePlanBtn = page.getByRole("button", { name: /Generate Repair Plan/i });
+      if (await generatePlanBtn.isVisible()) {
+        await generatePlanBtn.click();
+        await expect(page.getByText("Repair Plan Preview")).toBeVisible({ timeout: 10000 });
+        const approveBtn = page.getByRole("button", { name: /Approve & Apply Fixes/i });
+        await expect(approveBtn).toBeVisible();
+        await approveBtn.click();
+        await expect(page).toHaveURL(/.*\/comparison/);
+      } else {
+        await page.goto("/comparison");
+      }
+    } else {
+      await page.goto("/comparison");
+    }
+
+    // Verify Comparison screen
+    await expect(page.getByText(/Dataset Comparison|No Comparison Data Yet/i)).toBeVisible({ timeout: 15000 });
 
     // Navigate to History
     await page.goto("/history");

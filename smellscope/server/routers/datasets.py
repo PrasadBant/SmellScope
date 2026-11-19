@@ -293,9 +293,20 @@ def validate_dataset(dataset_id: str, req: DatasetValidateRequest) -> DatasetVal
             warnings=warnings,
         )
     except SmellScopeError as sse:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": sse.code, "message": sse.message, "details": sse.details},
+        return DatasetValidateResponse(
+            valid=False,
+            schema_id="invalid",
+            unique_classes=[],
+            class_counts={},
+            column_roles={},
+            warnings=[f"{sse.code}: {sse.message}"],
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Validation failed: {exc}")
+        return DatasetValidateResponse(
+            valid=False,
+            schema_id="invalid",
+            unique_classes=[],
+            class_counts={},
+            column_roles={},
+            warnings=[f"E_VALIDATION_ERROR: {str(exc)}"],
+        )
