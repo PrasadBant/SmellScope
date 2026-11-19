@@ -482,3 +482,102 @@ export interface ModelPredictResponse {
   class_names: string[];
   label_col: string;
 }
+
+export interface RepairRecommendation {
+  id: string;
+  category: "DATA_QUALITY" | "DATASET_DESIGN" | "SHORTCUT_FRAGILITY" | string;
+  severity: "HIGH" | "MEDIUM" | "LOW" | string;
+  problem_name: string;
+  detected: string;
+  why_it_matters: string;
+  affected_columns: string[];
+  affected_records: number;
+  evidence: any;
+  suggested_correction: string;
+  expected_benefit: string;
+  potential_risk: string;
+  is_reversible: boolean;
+  rsm_tier: string;
+  action_type: string;
+  action_params?: Record<string, any>;
+  what_is_the_problem?: string;
+  why_should_i_improve_it?: string;
+  what_will_change?: string;
+  what_could_become_worse?: string;
+  is_safe_under_rsm?: boolean;
+  is_recommended?: boolean;
+  is_high_priority?: boolean;
+}
+
+export interface ComparisonData {
+  scores?: {
+    before: Record<string, any>;
+    after: Record<string, any>;
+    delta: Record<string, number>;
+  };
+  data_quality: {
+    before: Record<string, any>;
+    after: Record<string, any>;
+    delta: Record<string, number>;
+  };
+  ml_benchmark: {
+    before: Record<string, any>;
+    after: Record<string, any>;
+    delta: Record<string, number | null>;
+    same_test_ids: boolean;
+    split_hash: string;
+    train_sizes: Record<string, number>;
+  };
+  test_integrity: {
+    same_test_ids: boolean;
+    test_sample_count: number;
+    split_hash: string;
+    status: string;
+  };
+  view_lineage: {
+    original_view_id: string;
+    corrected_view_id: string;
+    excluded_features: string[];
+  };
+  row_diff?: {
+    original_rows: number;
+    retained_rows: number;
+    modified_rows: number;
+    removed_rows: number;
+    quarantined_rows: number;
+    added_rows: number;
+    unchanged_rows: number;
+  };
+  feature_diff?: {
+    original_count: number;
+    improved_count: number;
+    features_retained: number;
+    features_excluded: string[];
+    features_transformed: string[];
+  };
+  applied_transformations?: {
+    name: string;
+    problem: string;
+    action: string;
+    affected_records: number;
+    affected_features: string[];
+    reason: string;
+    impact_on_metric: string;
+    negative_side_effect: string;
+  }[];
+  confusion_matrix_comparison?: {
+    labels: string[];
+    before: number[][];
+    after: number[][];
+    before_pct: number[][];
+    after_pct: number[][];
+  };
+  scientific_verdict?: {
+    verdict_type: string;
+    summary: string;
+    problems_corrected: string[];
+    problems_remaining: string[];
+    what_this_proves: string;
+    what_this_does_not_prove: string;
+  };
+}

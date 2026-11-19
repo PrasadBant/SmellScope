@@ -1,6 +1,7 @@
 seed: 42
 sampling:
   max_rows_per_class: 20000
+  seed: 42
 split:
   train: 0.6
   val: 0.2
@@ -8,13 +9,20 @@ split:
   stratified: true
 runtime:
   budget_seconds: 300
+  degradation_enabled: true
 rsm:
   policy:
     min_class_retention: 0.50
     min_cluster_retention: 0.25
     max_ablation_features: 10
+    warn_class_loss_pct: 0.10
+    class_min_count_soft: 50
+    cluster_loss_warn: 0.50
+    min_class_count_for_split: 10
+    class_elimination: 0
 paths:
   runs: "./runs"
   data: "./data"
   cache: "./cache"
+  cached_results: "./cached_results"
   reports: "./reports"

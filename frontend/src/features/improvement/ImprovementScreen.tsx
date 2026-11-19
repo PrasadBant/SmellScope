@@ -38,6 +38,9 @@ type Rec = {
   is_reversible: boolean;
   rsm_tier: string;
   action_type: string;
+  is_safe_under_rsm?: boolean;
+  is_recommended?: boolean;
+  is_high_priority?: boolean;
 };
 
 const SEVERITY_STYLES: Record<string, string> = {
@@ -114,6 +117,14 @@ export const ImprovementScreen: React.FC = () => {
       return next;
     });
   };
+
+  // Selection shortcuts only choose which recommendations are ticked; nothing is previewed or applied.
+  const selectWhere = (predicate: (r: Rec) => boolean) => {
+    setSelectedIds(new Set(recs.filter(predicate).map((r) => r.id)));
+  };
+  const safeCount = recs.filter((r) => r.is_safe_under_rsm).length;
+  const recommendedCount = recs.filter((r) => r.is_recommended).length;
+  const highPriorityCount = recs.filter((r) => r.is_high_priority).length;
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -255,6 +266,26 @@ export const ImprovementScreen: React.FC = () => {
           <p className="text-sm text-txt-muted max-w-lg mx-auto">
             No actionable improvements were identified from the current audit evidence. The dataset exhibits good quality and low shortcut reliance across evaluated dimensions.
           </p>
+        </div>
+      )}
+
+      {/* Selection shortcuts */}
+      {!loading && !error && recs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="selection-controls">
+          <span className="text-xs font-semibold uppercase tracking-wide text-txt-muted">Quick select</span>
+          <Button variant="outline" size="sm" disabled={safeCount === 0} onClick={() => selectWhere((r) => !!r.is_safe_under_rsm)}>
+            Select all safe ({safeCount})
+          </Button>
+          <Button variant="outline" size="sm" disabled={recommendedCount === 0} onClick={() => selectWhere((r) => !!r.is_recommended)}>
+            Select recommended ({recommendedCount})
+          </Button>
+          <Button variant="outline" size="sm" disabled={highPriorityCount === 0} onClick={() => selectWhere((r) => !!r.is_high_priority)}>
+            Select high priority ({highPriorityCount})
+          </Button>
+          <Button variant="ghost" size="sm" disabled={selectedIds.size === 0} onClick={() => setSelectedIds(new Set())}>
+            Clear selection
+          </Button>
+          <span className="text-[11px] text-txt-muted">Selecting does not change your data. Review the preview before applying.</span>
         </div>
       )}
 

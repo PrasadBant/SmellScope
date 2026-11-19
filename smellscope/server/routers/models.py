@@ -47,7 +47,7 @@ def save_model(req: ModelSaveRequest):
         try:
             views = remediation_session_manager.get_views(req.run_id)
             active_view = views[-1] if views else None
-            remediation_session_manager.rebenchmark(req.run_id)
+            remediation_session_manager.execute_rebenchmark(req.run_id)
             trained_artifacts = get_active_trained_model(req.run_id, active_view["view_id"] if active_view else None)
         except Exception as e:
             logger.warning("Could not auto-rebenchmark for model save: %s", e)

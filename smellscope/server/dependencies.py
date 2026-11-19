@@ -30,8 +30,9 @@ from smellscope.remediation.manager import (
     generate_repair_plan_preview,
     apply_repair_plan,
     get_dataset_comparison,
+    reaudit_view,
 )
-from smellscope.core.errors import E_FILE, SmellScopeError
+from smellscope.core.errors import E_CONFIG, E_FILE, SmellScopeError
 
 
 class DatasetRegistry:
@@ -273,6 +274,9 @@ class RemediationSessionManager:
         self._previews: Dict[str, Dict[str, Any]] = {}  # preview_id -> preview
         self._rebenchmarks: Dict[str, Dict[str, Any]] = {}  # run_id -> last rebenchmark
         self._exports: Dict[str, Dict[str, Any]] = {}  # run_id -> export metadata
+        # Hash-keyed caches (view_hash changes whenever rows/features/transforms change)
+        self._reaudits: Dict[tuple, Dict[str, Any]] = {}
+        self._comparisons: Dict[tuple, Dict[str, Any]] = {}
 
     def _ensure_initialized(self, run_id: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
         job = self._job_manager.get_job(run_id)
@@ -414,11 +418,37 @@ class RemediationSessionManager:
         with self._lock:
             ds, split = self._ensure_initialized(run_id)
             active_view = self._views[run_id][-1]
+            # Resolve each selection against the server-generated recommendations so that
+            # action types/parameters can never be spoofed, stripped or stale on the client.
+            job = self._job_manager.get_job(run_id)
+            authoritative = {
+                r["id"]: r
+                for r in generate_repair_recommendations(
+                    ds=ds,
+                    audit_result=job.result if job else None,
+                    split=split,
+                    view=active_view,
+                )
+            }
+            resolved: List[Dict[str, Any]] = []
+            unknown: List[str] = []
+            for sel in selected_recs:
+                rec_id = sel.get("id")
+                if rec_id in authoritative:
+                    resolved.append(authoritative[rec_id])
+                else:
+                    unknown.append(str(rec_id))
+            if unknown:
+                raise SmellScopeError(
+                    code=E_CONFIG,
+                    message=f"Unknown or no-longer-applicable recommendation id(s): {', '.join(unknown)}. Refresh recommendations.",
+                    details={"unknown_ids": unknown},
+                )
             preview = generate_repair_plan_preview(
                 ds=ds,
                 split=split,
                 view=active_view,
-                selected_recs=selected_recs,
+                selected_recs=resolved,
             )
             self._previews[preview["preview_id"]] = {
                 "run_id": run_id,
@@ -448,10 +478,23 @@ class RemediationSessionManager:
                 approval=approval,
                 run_id=run_id,
             )
+            if export_meta.get("outcome") == "NO_CHANGE":
+                # Truthful no-op: do not fabricate a new dataset version or overwrite a real export.
+                return new_view, log_entry, export_meta
             self._views[run_id].append(new_view)
             self._changelogs[run_id].append(log_entry)
             self._exports[run_id] = export_meta
             return new_view, log_entry, export_meta
+
+    def _get_reaudit(self, run_id: str, ds: Dict[str, Any], split: Dict[str, Any], view: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Return a (cached) real re-audit of a corrected view; None for the untouched root view."""
+        if view.get("parent_view_id") is None:
+            return None
+        key = (run_id, view["view_hash"])
+        if key not in self._reaudits:
+            cfg = get_default_config()
+            self._reaudits[key] = reaudit_view(ds=ds, split=split, view=view, cfg=cfg)
+        return self._reaudits[key]
 
     def get_dataset_comparison(self, run_id: str, target_class: Optional[str] = None) -> Dict[str, Any]:
         with self._lock:
@@ -459,13 +502,23 @@ class RemediationSessionManager:
             views = self._views[run_id]
             orig_view = views[0]
             curr_view = views[-1]
-            return get_dataset_comparison(
+            key = (run_id, curr_view["view_hash"], target_class)
+            if key in self._comparisons:
+                return self._comparisons[key]
+            job = self._job_manager.get_job(run_id)
+            reaudit = self._get_reaudit(run_id, ds, split, curr_view)
+            result = get_dataset_comparison(
                 ds=ds,
                 split=split,
                 original_view=orig_view,
                 remediated_view=curr_view,
                 target_class=target_class,
+                original_audit=job.result if job else None,
+                reaudit=reaudit,
+                run_id=run_id,
             )
+            self._comparisons[key] = result
+            return result
 
     def get_dataset_scores(self, run_id: str) -> Dict[str, Any]:
         with self._lock:
@@ -473,12 +526,15 @@ class RemediationSessionManager:
             job = self._job_manager.get_job(run_id)
             active_view = self._views[run_id][-1]
             train_subset = ds["df"][ds["df"]["__row_id"].isin(active_view["_included_row_ids"])]
+            # Score the active view with the audit that actually describes it: the original run for
+            # the untouched view, a real re-audit for any corrected view.
+            audit = self._get_reaudit(run_id, ds, split, active_view) or (job.result if job else None)
             from smellscope.scoring import compute_overall_dataset_assessment
             return compute_overall_dataset_assessment(
                 df=train_subset,
                 label_col=ds["label_col"],
                 benign_label=ds.get("benign_label", "BENIGN"),
-                audit_result=job.result if job else None,
+                audit_result=audit,
                 split=split,
                 roles=ds.get("column_roles"),
             )

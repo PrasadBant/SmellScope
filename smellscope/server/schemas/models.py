@@ -12,6 +12,7 @@ class HealthResponse(BaseModel):
     backend_available: bool = True
     research_engine_available: bool = True
     execution_mode: str = "local-first"
+    checks: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     scientific_disclaimer: str = (
         "SmellScope is a scientific benchmark dataset auditor, NOT an active network intrusion detection system."
     )
@@ -339,6 +340,14 @@ class RepairRecommendationItem(BaseModel):
     is_reversible: bool
     rsm_tier: str  # SAFE | WARN | REVIEW
     action_type: str
+    action_params: Dict[str, Any] = Field(default_factory=dict)
+    what_is_the_problem: Optional[str] = None
+    why_should_i_improve_it: Optional[str] = None
+    what_will_change: Optional[str] = None
+    what_could_become_worse: Optional[str] = None
+    is_safe_under_rsm: bool = False
+    is_recommended: bool = False
+    is_high_priority: bool = False
 
 
 class RecommendationsResponse(BaseModel):
@@ -382,6 +391,12 @@ class DatasetComparisonResponse(BaseModel):
     ml_benchmark: Dict[str, Any]
     test_integrity: Dict[str, Any]
     view_lineage: Dict[str, Any]
+    reaudit: Optional[Dict[str, Any]] = None
+    row_diff: Optional[Dict[str, Any]] = None
+    feature_diff: Optional[Dict[str, Any]] = None
+    applied_transformations: List[Dict[str, Any]] = Field(default_factory=list)
+    confusion_matrix_comparison: Optional[Dict[str, Any]] = None
+    scientific_verdict: Optional[Dict[str, Any]] = None
 
 
 # =============================================================================

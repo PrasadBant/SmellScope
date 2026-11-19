@@ -41,3 +41,153 @@ taxonomy:
   B: "Semantically Meaningful"
   C: "Context Dependent"
   D: "Uncontrollable / Artifact"
+
+# --- Merged from legacy configs/ui.yaml ---
+evidence_labels:
+  published:
+    badge: '[published]'
+    color: '#0284c7'
+    bg_color: '#e0f2fe'
+    description: Quoted directly from Flood et al. (IEEE EuroS&P 2024)
+  target:
+    badge: '[target]'
+    color: '#6b7280'
+    bg_color: '#f3f4f6'
+    description: Pre-registered hypothesis expectation before experiment execution
+  measured:
+    badge: '[measured]'
+    color: '#16a34a'
+    bg_color: '#dcfce7'
+    description: Empirically computed by SmellScope code on real benchmark dataset
+  synthetic:
+    badge: '[synthetic]'
+    color: '#9333ea'
+    bg_color: '#f3e8ff'
+    description: Planted-shortcut benchmark dataset (ground truth by construction)
+  cached:
+    badge: '[cached]'
+    color: '#ea580c'
+    bg_color: '#ffedd5'
+    description: Pre-computed audit result loaded from verified disk archive
+  mock:
+    badge: '[mock]'
+    color: '#dc2626'
+    bg_color: '#fee2e2'
+    description: Synthetic UI test fixture data; not an empirical measurement
+rsm_statuses:
+  PASS:
+    badge: '[PASS ✓]'
+    color: '#16a34a'
+    bg_color: '#dcfce7'
+    description: All safety thresholds satisfied; remediation is safe to apply.
+  WARN:
+    badge: '[WARN ⚠]'
+    color: '#d97706'
+    bg_color: '#fef3c7'
+    description: Significant data reduction detected; operator acknowledgment required
+      before applying.
+  BLOCK:
+    badge: '[BLOCK 🛑]'
+    color: '#dc2626'
+    bg_color: '#fee2e2'
+    description: Critical safety guardrail violated; applying remediation is strictly
+      disabled.
+error_mappings:
+  E_SCHEMA:
+    title: Invalid Dataset Schema
+    message: The dataset format or column headers do not match supported specifications.
+    next_step: Ensure CSV headers are clean, unquoted, and contain numeric flow features.
+  E_LABEL_COLUMN:
+    title: Label Column Not Found
+    message: The specified label column does not exist in the loaded dataset.
+    next_step: Check dataset summary card and select the correct label column name.
+  E_BENIGN_LABEL_MISSING:
+    title: Benign Background Label Missing
+    message: The specified benign background label was not found in the label column
+      values.
+    next_step: Verify spelling of benign label (e.g. 'BENIGN' vs 'Normal').
+  E_CLASS_TOO_SMALL:
+    title: Attack Class Sample Too Small
+    message: This attack class has insufficient flows to construct a valid train/val/test
+      split.
+    next_step: Desensitize class filter or evaluate a class with at least 50 recorded
+      flows.
+  E_SPLIT_INVALID:
+    title: Stratified Split Allocation Failure
+    message: Could not create a valid stratified train/validation/test split.
+    next_step: Review dataset class counts or adjust train/val/test ratio in configuration.
+  E_TEST_LEAK:
+    title: 'Protocol Violation: Test Set Leakage Detected'
+    message: A remediation rule attempted to inspect or modify locked test set rows.
+    next_step: Ensure cleaning rules and scalers are fitted exclusively on training
+      rows.
+  E_CONFIG:
+    title: Invalid Configuration Parameter
+    message: A configuration parameter is out of bounds or semantically invalid.
+    next_step: Check config YAML files against schema specifications.
+  E_MEASURE_FAILED:
+    title: Heuristic Computation Notice
+    message: One or more heuristics could not be computed for this specific class.
+    next_step: Review the 'na_reasons' tooltip in the heatmap for technical details.
+  E_RULE_UNAVAILABLE:
+    title: Remediation Rule Unavailable
+    message: The selected remediation rule requires columns that do not exist in this
+      dataset schema.
+    next_step: Verify dataset schema ID and select an applicable remediation rule.
+  E_RSM_BLOCK:
+    title: Remediation Blocked by Safety Monitor
+    message: The proposed remediation violates critical data preservation guardrails.
+    next_step: Inspect the RSM panel blocks list and adjust remediation parameters.
+  E_RSM_WARN_UNACKED:
+    title: Safety Warning Acknowledgment Required
+    message: This remediation triggered safety warnings that have not been acknowledged.
+    next_step: Review warning details and check the confirmation box to proceed.
+  E_ROLLBACK_MISMATCH:
+    title: Rollback Integrity Failure
+    message: Rollback state hash does not match the parent training view hash.
+    next_step: Reset session state to reload baseline training view.
+  E_FILE:
+    title: File Access Error
+    message: Could not locate or read the specified file path on disk.
+    next_step: Verify the file path exists and has read permissions.
+  E_INTERNAL:
+    title: Internal Execution Error
+    message: An unexpected error occurred during execution.
+    next_step: Check run.log in the active run directory for details.
+forbidden_strings:
+- wrong label confirmed
+- corrected dataset
+- proves
+- validated
+- first
+- novel algorithm
+- state of the art
+- ground truth certified
+- flawless
+- guaranteed
+approved_terminology:
+  candidate: Indicates a potential shortcut or quarantined flow subject to review
+  flag: Diagnostic review trigger; never a definitive verdict
+  indicator: A measurable signal providing evidence for further expert inspection
+  approximate: Heuristics and proxies with documented assumptions
+  what_if_view: A reversible, non-destructive training view
+taxonomy_categories:
+  A:
+    name: 'Category A: Identifier / Metadata'
+    description: IP addresses, Flow IDs, timestamps, or destination server ports.
+      High risk of environment shortcutting.
+  B:
+    name: 'Category B: Host / Environment Fingerprint'
+    description: Operating system or network stack artifacts (TTL, initial window
+      sizes, MSS). Medium risk.
+  C:
+    name: 'Category C: Controllable Size / Timing'
+    description: Payload sizes, packet length statistics, inter-arrival jitter. Needs
+      context.
+  D:
+    name: 'Category D: Mechanism-Linked'
+    description: Features intrinsic to the attack mechanism (e.g. SYN flag counts
+      in SYN flood). Never flags as shortcut alone.
+  UNMAPPED:
+    name: 'UNMAPPED: Unknown Controllability'
+    description: Feature column not mapped in schema taxonomy YAML. Treated conservatively.

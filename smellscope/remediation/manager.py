@@ -616,11 +616,19 @@ def rebenchmark(
         "fnr": _calc_delta(eval_before.get("fnr"), eval_after.get("fnr")),
     }
 
+    # Verify (not assume) that both evaluations used exactly the locked test rows.
+    locked_test = sorted(int(i) for i in split["test_ids"])
+    before_test = sorted(int(i) for i in test_df["__row_id"])
+    after_test = sorted(int(i) for i in rem_test_df["__row_id"])
+    same_test_ids = (before_test == after_test == locked_test)
+    test_fingerprint = hashlib.sha256(",".join(map(str, locked_test)).encode("utf-8")).hexdigest()
+
     result: Dict[str, Any] = {
         "before": eval_before,
         "after": eval_after,
         "delta": delta,
-        "same_test_ids": True,
+        "same_test_ids": same_test_ids,
+        "test_fingerprint": test_fingerprint,
         "split_hash": split["split_hash"],
         "train_sizes": {
             "before": len(orig_train_df),
@@ -755,6 +763,7 @@ def generate_repair_plan_preview(
     preview_id = f"plan_{uuid.uuid4().hex[:8]}"
 
     preview: Dict[str, Any] = {
+        "_quarantined_row_ids": sorted(int(i) for i in quarantined_row_ids),  # internal: exact rows to exclude on apply
         "preview_id": preview_id,
         "action": "COMPOSITE_REPAIR_PLAN",
         "params": {
@@ -844,16 +853,12 @@ def apply_repair_plan(
     train_subset = df[df["__row_id"].isin(current_train_ids)].copy()
     quarantined_ids: set[int] = set()
 
-    # Re-evaluate dedup and quarantine if specified
-    dedup_requested = params.get("dedup_requested", False)
-    if dedup_requested or preview.get("affected", {}).get("n_rows", 0) > 0:
-        cols_for_dup = [
-            c for c in train_subset.columns
-            if c not in (label_col, "__row_id") and c not in new_excluded_features
-        ]
-        if cols_for_dup:
-            dup_mask = train_subset[cols_for_dup].duplicated()
-            quarantined_ids.update(set(train_subset.loc[dup_mask, "__row_id"]))
+    # Apply exactly the rows the previewed plan selected (dedup + quarantine), restricted to the
+    # active training view. Test rows can never be in this set (asserted below).
+    current_train_set = set(current_train_ids)
+    quarantined_ids.update(
+        int(i) for i in preview.get("_quarantined_row_ids", []) if int(i) in current_train_set
+    )
 
     new_train_ids = [rid for rid in current_train_ids if rid not in quarantined_ids]
 
@@ -933,7 +938,23 @@ def apply_repair_plan(
     n_features_dropped = len(features_to_drop)
     n_imputed = len(impute_cols)
     n_inf_cleaned = len(clean_inf_cols)
-    has_modifications = (n_rows_dropped > 0 or n_features_dropped > 0 or n_imputed > 0 or n_inf_cleaned > 0)
+    new_features_dropped = len(features_to_drop - set(current_excluded_features))
+    has_modifications = (n_rows_dropped > 0 or new_features_dropped > 0 or n_imputed > 0 or n_inf_cleaned > 0)
+
+    if not has_modifications:
+        change_log_entry.update({"status": "NO_CHANGE", "view_id": view["view_id"]})
+        return view, change_log_entry, {
+            "file_path": None,
+            "filename": None,
+            "sha256": view.get("view_hash"),
+            "total_rows": len(corrected_full),
+            "total_columns": len(remaining_cols),
+            "view_id": view["view_id"],
+            "status": "NO_CHANGE",
+            "outcome": "NO_CHANGE",
+            "explanation": "Selected repairs produced no data modifications; no new dataset version was created.",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     # Save versioned dataset file to disk
     repaired_dir = Path("./data/repaired")
@@ -970,7 +991,8 @@ def apply_repair_plan(
         "total_rows": len(corrected_full),
         "total_columns": len(remaining_cols),
         "view_id": new_view_id,
-        "status": "MODIFIED" if has_modifications else "NO_CHANGE",
+        "status": "MODIFIED",
+        "outcome": "APPLIED",
         "explanation": (
             f"Successfully applied repair plan: {preview.get('reason', 'repaired dataset')}"
             if has_modifications
@@ -989,6 +1011,9 @@ def get_dataset_comparison(
     remediated_view: Dict[str, Any],
     cfg: Optional[Dict[str, Any]] = None,
     target_class: Optional[str] = None,
+    original_audit: Optional[Dict[str, Any]] = None,
+    reaudit: Optional[Dict[str, Any]] = None,
+    run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Compute comprehensive Original vs Corrected dataset comparison covering:
     - Data Quality Comparison (rows, cols, missing, infinite, duplicates, class distribution)
@@ -1058,27 +1083,33 @@ def get_dataset_comparison(
         remediated_view=remediated_view,
         cfg=cfg,
         target_class=target_class,
+        run_id=run_id,
     )
 
     # Comprehensive before vs after 4-dimension dataset assessment
     from smellscope.scoring import compute_overall_dataset_assessment
 
+    # Both sides are scored through the same audit-derived path so they are directly comparable
+    # (and the "before" side matches the authoritative /scores endpoint). Without a re-audit of
+    # the corrected view the audit-dependent dimensions carry reduced evidence coverage instead
+    # of silently reusing the original data's audit.
     before_scores = compute_overall_dataset_assessment(
         df=orig_df,
         label_col=label_col,
         benign_label=ds.get("benign_label", "BENIGN"),
+        audit_result=original_audit,
         split=split,
-        baseline_eval=ml_rebenchmark.get("before"),
         roles=ds.get("column_roles"),
         cfg=cfg,
     )
 
+    same_view = original_view["view_id"] == remediated_view["view_id"]
     after_scores = compute_overall_dataset_assessment(
         df=rem_df,
         label_col=label_col,
         benign_label=ds.get("benign_label", "BENIGN"),
+        audit_result=(original_audit if same_view else reaudit),
         split=split,
-        baseline_eval=ml_rebenchmark.get("after"),
         roles=ds.get("column_roles"),
         cfg=cfg,
     )
@@ -1107,6 +1138,176 @@ def get_dataset_comparison(
         ),
     }
 
+    # Detailed row diff
+    n_removed_rows = len(orig_train_ids - rem_train_ids)
+    n_modified_rows = len(orig_train_ids.intersection(rem_train_ids)) if (len(imputations) > 0 or len(clean_inf_cols) > 0) else 0
+    n_unchanged_rows = max(0, len(rem_df) - n_modified_rows)
+    row_diff = {
+        "original_rows": len(orig_df),
+        "retained_rows": len(rem_df),
+        "modified_rows": n_modified_rows,
+        "removed_rows": n_removed_rows,
+        "quarantined_rows": n_removed_rows,
+        "added_rows": 0,
+        "unchanged_rows": n_unchanged_rows,
+    }
+
+    # Detailed feature diff
+    feature_diff = {
+        "original_count": len(orig_features),
+        "improved_count": len(rem_features),
+        "features_retained": len(rem_features),
+        "features_excluded": remediated_view.get("excluded_features", []),
+        "features_transformed": sorted(list(set(list(imputations.keys()) + clean_inf_cols))),
+    }
+
+    # Detailed transformation explanations
+    applied_transformations = []
+    if remediated_view.get("excluded_features"):
+        applied_transformations.append({
+            "name": "Counterfactual Feature Ablation (R1)",
+            "problem": "Dominant Shortcut Feature (HDF/SFI)",
+            "action": f"Ablated {len(remediated_view['excluded_features'])} shortcut feature(s): {', '.join(remediated_view['excluded_features'])}",
+            "affected_records": len(rem_df),
+            "affected_features": remediated_view["excluded_features"],
+            "reason": "Prevents classifier from memorizing synthetic experimental artifacts and single-port shortcuts.",
+            "impact_on_metric": "Reduces Shortcut and Leakage Risk; forces learning on semantic payload telemetry.",
+            "negative_side_effect": "Test accuracy on static synthetic benchmark may decrease slightly as model can no longer rely on trivial port shortcuts.",
+        })
+    if n_removed_rows > 0:
+        applied_transformations.append({
+            "name": "Duplicate Flow Deduplication",
+            "problem": "Duplicate flow records inflating evaluation metrics artificially",
+            "action": f"Pruned {n_removed_rows} duplicate flow instances from training partition",
+            "affected_records": n_removed_rows,
+            "affected_features": [label_col],
+            "reason": "Eliminates repeated synthetic records that cause artificial overfitting across splits.",
+            "impact_on_metric": "Improves Data Quality score and evaluation reliability.",
+            "negative_side_effect": f"Reduces training partition row count by {n_removed_rows} records.",
+        })
+    if clean_inf_cols:
+        applied_transformations.append({
+            "name": "Infinite Float Value Normalization",
+            "problem": "Unbounded float values in flow rate telemetry",
+            "action": f"Capped infinite float values across {len(clean_inf_cols)} column(s) at 99th/1st percentiles",
+            "affected_records": len(rem_df),
+            "affected_features": clean_inf_cols,
+            "reason": "Prevents numerical overflow and gradient instability in estimators.",
+            "impact_on_metric": "Zero infinite values remaining in corrected view.",
+            "negative_side_effect": "None — bounds extreme numeric spikes safely.",
+        })
+    if imputations:
+        applied_transformations.append({
+            "name": "Locked Median Missing Value Imputation",
+            "problem": "Missing/NaN telemetry values in feature columns",
+            "action": f"Imputed missing entries across {len(imputations)} column(s) using partition-locked training medians",
+            "affected_records": len(rem_df),
+            "affected_features": list(imputations.keys()),
+            "reason": "Preserves informative records that would otherwise be discarded due to isolated NaN telemetry.",
+            "impact_on_metric": "Zero missing values remaining in dataset.",
+            "negative_side_effect": "Slight reduction in variance for imputed columns.",
+        })
+
+    # Confusion matrix comparison with normalized percentages
+    cm_before = ml_rebenchmark.get("before", {}).get("confusion_matrix", [])
+    cm_after = ml_rebenchmark.get("after", {}).get("confusion_matrix", [])
+    labels_before = ml_rebenchmark.get("before", {}).get("labels", [])
+    labels_after = ml_rebenchmark.get("after", {}).get("labels", [])
+
+    def _normalize_cm(cm):
+        if not cm:
+            return []
+        arr = np.array(cm, dtype=float)
+        row_sums = arr.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1.0
+        norm = (arr / row_sums) * 100.0
+        return np.round(norm, 1).tolist()
+
+    confusion_matrix_comparison = {
+        "labels": labels_before or labels_after,
+        "before": cm_before,
+        "after": cm_after,
+        "before_pct": _normalize_cm(cm_before),
+        "after_pct": _normalize_cm(cm_after),
+    }
+
+    # Evidence-based verdict: report what was measured, never what was hoped for.
+    def _num(v):
+        return None if v is None else float(v)
+
+    acc_before = _num(ml_rebenchmark.get("before", {}).get("acc"))
+    acc_after = _num(ml_rebenchmark.get("after", {}).get("acc"))
+    f1_before = _num(ml_rebenchmark.get("before", {}).get("f1"))
+    f1_after = _num(ml_rebenchmark.get("after", {}).get("f1"))
+
+    score_labels = [
+        ("data_quality", "Data Quality", True),
+        ("nids_suitability", "NIDS Suitability", True),
+        ("shortcut_risk", "Shortcut Risk", False),
+        ("evaluation_reliability", "Evaluation Reliability", True),
+    ]
+    improved, worsened, unchanged = [], [], []
+    for key, label, higher_better in score_labels:
+        d = scores_delta.get(key, 0.0) or 0.0
+        if abs(d) < 0.5:
+            unchanged.append(label)
+        elif (d > 0) == higher_better:
+            improved.append(f"{label} ({d:+.1f})")
+        else:
+            worsened.append(f"{label} ({d:+.1f})")
+
+    modified_anything = bool(applied_transformations)
+    if same_view or not modified_anything:
+        verdict_type = "NO_CHANGE"
+        verdict_summary = "No repair has been applied (or the applied repairs changed nothing), so there is nothing to compare."
+    else:
+        if improved and not worsened:
+            verdict_type = "IMPROVED"
+        elif worsened and not improved:
+            verdict_type = "WORSENED"
+        elif improved and worsened:
+            verdict_type = "MIXED"
+        else:
+            verdict_type = "NO_MEASURABLE_CHANGE"
+        parts = []
+        if acc_before is not None and acc_after is not None:
+            parts.append(f"Locked-test accuracy {acc_before:.1%} -> {acc_after:.1%} ({acc_after - acc_before:+.1%})")
+        if f1_before is not None and f1_after is not None:
+            parts.append(f"macro F1 {f1_before:.3f} -> {f1_after:.3f}")
+        parts.append("improved: " + (", ".join(improved) or "none"))
+        parts.append("worsened: " + (", ".join(worsened) or "none"))
+        verdict_summary = "; ".join(parts) + "."
+        if reaudit is None:
+            verdict_summary += " Corrected-view scores were computed without a completed re-audit and carry reduced evidence coverage."
+
+    notes = []
+    for tag, a_ in (("original", acc_before), ("corrected", acc_after)):
+        if a_ is not None and a_ >= 0.999:
+            notes.append(
+                f"The {tag} model reaches ~100% locked-test accuracy; this warrants investigation (leakage, "
+                "duplicate or trivially separable classes) rather than being treated as evidence of quality."
+            )
+    if acc_before is not None and acc_after is not None and acc_after < acc_before - 0.01:
+        notes.append(
+            "Accuracy decreased after repair. This is consistent with, but does not by itself prove, reduced reliance on "
+            "removed shortcut features; lower accuracy is not automatically better."
+        )
+
+    scientific_verdict = {
+        "verdict_type": verdict_type,
+        "summary": verdict_summary,
+        "scores_improved": improved,
+        "scores_worsened": worsened,
+        "scores_unchanged": unchanged,
+        "problems_corrected": [t["problem"] for t in applied_transformations],
+        "problems_remaining": [
+            "Issues not covered by the selected repairs may remain in the corrected view; review the re-audit findings.",
+            "The locked test partition is deliberately untouched, so test-side artifacts (if any) are not removed.",
+        ] + notes,
+        "what_this_proves": "Shows measured differences between the original and corrected training views evaluated on the same locked test rows.",
+        "what_this_does_not_prove": "Does not prove the corrected dataset is better in general, nor generalisation to unseen traffic or attacks; results come from one split and one seed.",
+    }
+
     return {
         "scores": {
             "before": before_scores,
@@ -1120,15 +1321,80 @@ def get_dataset_comparison(
         },
         "ml_benchmark": ml_rebenchmark,
         "test_integrity": {
-            "same_test_ids": True,
+            "same_test_ids": bool(ml_rebenchmark.get("same_test_ids")),
             "test_sample_count": len(split.get("test_ids", [])),
+            "test_fingerprint": ml_rebenchmark.get("test_fingerprint"),
             "split_hash": split.get("split_hash"),
-            "status": "LOCKED_TEST_VERIFIED",
+            "status": "LOCKED_TEST_VERIFIED" if ml_rebenchmark.get("same_test_ids") else "TEST_SET_MISMATCH",
+        },
+        "reaudit": {
+            "performed": reaudit is not None,
+            "run_id": (reaudit or {}).get("run_id"),
+            "classes_audited": len((reaudit or {}).get("classes", [])),
+            "runtime_seconds": ((reaudit or {}).get("runtime") or {}).get("total_seconds"),
         },
         "view_lineage": {
             "original_view_id": original_view["view_id"],
             "corrected_view_id": remediated_view["view_id"],
             "excluded_features": remediated_view["excluded_features"],
         },
+        "row_diff": row_diff,
+        "feature_diff": feature_diff,
+        "applied_transformations": applied_transformations,
+        "confusion_matrix_comparison": confusion_matrix_comparison,
+        "scientific_verdict": scientific_verdict,
     }
 
+
+
+def build_view_dataframe(ds: Dict[str, Any], split: Dict[str, Any], view: Dict[str, Any]) -> pd.DataFrame:
+    """Materialise a corrected training view as a full dataframe (train view + untouched val/test).
+
+    Imputation values and infinite-value caps are derived from the view's training rows only.
+    Excluded features are dropped from every partition.
+    """
+    df = ds["df"]
+    keep_ids = set(view["_included_row_ids"]) | set(split.get("val_ids", [])) | set(split["test_ids"])
+    out = df[df["__row_id"].isin(keep_ids)].copy()
+    train_mask = out["__row_id"].isin(set(view["_included_row_ids"]))
+
+    for col, med in view.get("_imputations", {}).items():
+        if col in out.columns:
+            out[col] = out[col].fillna(med)
+    for col in view.get("_clean_inf_cols", []):
+        if col in out.columns and pd.api.types.is_numeric_dtype(out[col]):
+            finite = out.loc[train_mask & np.isfinite(out[col]), col]
+            if len(finite) > 0:
+                out[col] = out[col].replace([np.inf], float(finite.quantile(0.99))).replace(
+                    [-np.inf], float(finite.quantile(0.01))
+                )
+    return out.drop(columns=[c for c in view.get("excluded_features", []) if c in out.columns])
+
+
+def reaudit_view(
+    ds: Dict[str, Any],
+    split: Dict[str, Any],
+    view: Dict[str, Any],
+    cfg: Optional[Dict[str, Any]] = None,
+    classes: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Re-run the full research audit on a corrected training view.
+
+    The locked validation and test partitions are reused unchanged; only the training
+    partition differs (rows quarantined by the repair plan are removed). The result is not
+    persisted as a new run.
+    """
+    from smellscope.pipeline.orchestrator import run_audit
+
+    view_df = build_view_dataframe(ds, split, view)
+    roles = {k: (v if (v is None or v in view_df.columns) else None) for k, v in (ds.get("column_roles") or {}).items()}
+    ds_view = {**ds, "df": view_df, "column_roles": roles}
+    split_view = {**split, "train_ids": sorted(int(i) for i in view["_included_row_ids"])}
+    return run_audit(
+        ds=ds_view,
+        classes=classes,
+        cfg=cfg,
+        run_id=f"reaudit_{view['view_id']}",
+        split_override=split_view,
+        persist=False,
+    )
