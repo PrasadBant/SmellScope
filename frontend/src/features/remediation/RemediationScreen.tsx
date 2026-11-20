@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useAuditContext } from "@/stores/AuditContext";
 import { api } from "@/api/client";
+import { RsmSafetyCheck, RsmSafetyRecord, canApplyPlan } from "@/components/rsm/RsmSafetyCheck";
 import { RemediationPreview, ViewsResponse } from "@/types/api";
 
 type RemediationSubStep = "9_PREVIEW" | "10_RSM" | "11_APPLY";
@@ -59,6 +60,8 @@ export const RemediationScreen: React.FC = () => {
     }
   };
 
+  const [appliedRecord, setAppliedRecord] = useState<any | null>(null);
+
   const handleGeneratePreview = async () => {
     if (!activeRunId) return;
     setLoading(true);
@@ -87,17 +90,25 @@ export const RemediationScreen: React.FC = () => {
     setErrorMsg(null);
 
     try {
-      await api.applyRemediation(activeRunId, preview.preview_id, {
-        approved: true,
-        warning_ack: warningAck,
-        approved_at: new Date().toISOString(),
-      });
+      // Backend re-runs RSM and verifies the exact previewed plan; plan_hash binds this request to it.
+      const res = await api.applyRemediation(
+        activeRunId,
+        preview.preview_id,
+        { approved: true, warning_ack: warningAck, approved_at: new Date().toISOString() },
+        preview.plan_hash || undefined
+      );
+      setAppliedRecord(res.change_log_entry?.rsm_record || null);
       await loadViews(activeRunId);
       setSuccessMsg("Remediation applied successfully to training view.");
       setRemediationSkipped(false);
       setCurrentStep("11_APPLY");
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to apply remediation");
+      const rejected = err?.status === 403 || err?.status === 409;
+      setErrorMsg(
+        rejected
+          ? `${err?.code === "E_STALE_PREVIEW" ? "This preview is out of date. Go back and generate a new preview." : "Your proposed improvement was not applied because it violated the safety policy."} ${err.message}`
+          : err.message || "Failed to apply remediation"
+      );
     } finally {
       setLoading(false);
     }
@@ -142,8 +153,7 @@ export const RemediationScreen: React.FC = () => {
   }
 
   const rsmReport = preview?.rsm_report;
-  const isBlocked = rsmReport?.status === "BLOCK";
-  const isWarn = rsmReport?.status === "WARN";
+  const canApply = canApplyPlan(rsmReport as any, warningAck, preview?.test_integrity as any);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
@@ -343,62 +353,32 @@ export const RemediationScreen: React.FC = () => {
             </p>
           </div>
 
-          {/* RSM Authorization Decision Header */}
-          <Card className={`border-2 ${
-            isBlocked ? "border-rose-800 bg-rose-950/20" : isWarn ? "border-amber-800 bg-amber-950/20" : "border-emerald-800 bg-emerald-950/20"
-          }`}>
-            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-sm">Remediation Safety Monitor (RSM) Authorization</CardTitle>
-                <CardDescription>
-                  Autonomous backend safety governance enforcing statistical and schema invariants.
-                </CardDescription>
-              </div>
-              <Badge variant={isBlocked ? "danger" : isWarn ? "warning" : "success"}>
-                RSM {rsmReport.status}
-              </Badge>
-            </CardHeader>
-            <CardContent className="p-4 space-y-3">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
-                <div className="p-2.5 rounded bg-bg-card border border-border">
-                  <span className="text-[10px] text-txt-muted block uppercase">Action Type</span>
-                  <strong className="text-txt-primary">{preview.action}</strong>
-                </div>
-                <div className="p-2.5 rounded bg-bg-card border border-border">
-                  <span className="text-[10px] text-txt-muted block uppercase">Proposed View</span>
-                  <strong className="text-accent-secondary">view_0001</strong>
-                </div>
-                <div className="p-2.5 rounded bg-bg-card border border-border">
-                  <span className="text-[10px] text-txt-muted block uppercase">Rows Retained</span>
-                  <strong className="text-txt-primary">{preview.expected_train_size.toLocaleString()}</strong>
-                </div>
-                <div className="p-2.5 rounded bg-bg-card border border-border">
-                  <span className="text-[10px] text-txt-muted block uppercase">Violations</span>
-                  <strong className={isBlocked ? "text-status-block" : "text-status-success"}>
-                    {rsmReport.blocks.length} Blocks, {rsmReport.warnings.length} Warns
-                  </strong>
-                </div>
-              </div>
+          <RsmSafetyCheck
+            report={rsmReport as any}
+            testIntegrity={preview?.test_integrity as any}
+            acknowledged={warningAck}
+            onAcknowledgedChange={setWarningAck}
+          />
 
-              {isWarn && (
-                <div className="p-3 rounded-lg border border-amber-800/80 bg-amber-950/40 text-amber-200 text-xs space-y-2">
-                  <p className="font-bold flex items-center gap-1.5">
-                    <AlertTriangle className="h-4 w-4 text-amber-400" />
-                    Acknowledgement Required:
-                  </p>
-                  <label className="flex items-center gap-2 cursor-pointer font-semibold">
-                    <input
-                      type="checkbox"
-                      checked={warningAck}
-                      onChange={(e) => setWarningAck(e.target.checked)}
-                      className="rounded border-amber-800 text-amber-500"
-                    />
-                    <span>I understand the statistical warning and authorize this remediation view for re-benchmarking.</span>
-                  </label>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* Plan summary (counts come from the backend preview) */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs font-mono">
+            <div className="p-2.5 rounded bg-bg-card border border-border">
+              <span className="text-[10px] text-txt-muted block uppercase">Action</span>
+              <strong className="text-txt-primary">{preview?.action}</strong>
+            </div>
+            <div className="p-2.5 rounded bg-bg-card border border-border">
+              <span className="text-[10px] text-txt-muted block uppercase">Training rows after plan</span>
+              <strong className="text-txt-primary">
+                {preview?.expected_train_size?.after?.toLocaleString()} of {preview?.expected_train_size?.before?.toLocaleString()}
+              </strong>
+            </div>
+            <div className="p-2.5 rounded bg-bg-card border border-border">
+              <span className="text-[10px] text-txt-muted block uppercase">Issues found</span>
+              <strong className={rsmReport?.blocks?.length ? "text-status-block" : "text-status-success"}>
+                {rsmReport?.blocks?.length ?? 0} blocks, {rsmReport?.warnings?.length ?? 0} warnings
+              </strong>
+            </div>
+          </div>
 
           {/* Action Footer */}
           <div className="p-4 rounded-xl border border-border bg-bg-card flex items-center justify-between">
@@ -413,11 +393,11 @@ export const RemediationScreen: React.FC = () => {
               variant="primary"
               size="md"
               className="gap-2 font-bold"
-              disabled={isBlocked || (isWarn && !warningAck)}
+              disabled={!canApply}
               isLoading={loading}
               onClick={handleApplyRemediation}
             >
-              APPLY APPROVED REMEDIATION <ArrowRight className="h-4 w-4" />
+              {rsmReport?.status === "WARN" ? "APPLY DESPITE WARNINGS" : "APPLY APPROVED REMEDIATION"} <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -434,6 +414,8 @@ export const RemediationScreen: React.FC = () => {
               Remediation applied successfully. The training view has been updated while preserving raw source data, locked test identifiers, and cryptographic audit lineage.
             </p>
           </div>
+
+          {appliedRecord && <RsmSafetyRecord record={appliedRecord} />}
 
           {/* Lineage Table */}
           <Card>

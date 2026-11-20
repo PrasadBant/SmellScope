@@ -69,6 +69,25 @@ def generate_repair_recommendations(
     def add_rec(rec: Dict[str, Any]) -> None:
         if rec["id"] not in seen_ids:
             seen_ids.add(rec["id"])
+            # Normalize 4-question format & intelligent selection metadata
+            rec["what_is_the_problem"] = rec.get("detected", "")
+            rec["why_should_i_improve_it"] = rec.get("why_it_matters", "")
+            aff_cols = rec.get("affected_columns", [])
+            aff_records = rec.get("affected_records", 0)
+            rec["what_will_change"] = (
+                rec.get("what_will_change")
+                or f"Applies {rec.get('action_type', 'transformation')} affecting {aff_records:,} records across column(s): {', '.join(aff_cols) if aff_cols else 'none'}."
+            )
+            rec["what_could_become_worse"] = (
+                rec.get("potential_risk")
+                or "Minor shift in model training priors; locked test evaluation remains unadjusted."
+            )
+            rec["is_safe_under_rsm"] = bool(rec.get("rsm_tier") in ("PASS", "SAFE"))
+            rec["is_high_priority"] = bool(rec.get("severity") == "HIGH")
+            rec["is_recommended"] = bool(
+                rec.get("severity") in ("HIGH", "MEDIUM")
+                and rec.get("rsm_tier") in ("PASS", "SAFE", "WARN")
+            )
             recommendations.append(rec)
 
     # =========================================================================

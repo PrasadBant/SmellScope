@@ -50,6 +50,8 @@ def run_audit(
     cfg: Optional[Dict[str, Any]] = None,
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
     run_id: Optional[str] = None,
+    split_override: Optional[Dict[str, Any]] = None,
+    persist: bool = True,
 ) -> Dict[str, Any]:
     """Execute a complete multi-class scientific audit across target dataset classes.
 
@@ -61,6 +63,9 @@ def run_audit(
         cfg: Configuration dictionary (or loads default if None).
         progress_cb: Optional callback func(current: int, total: int, class_name: str).
         run_id: Optional specific audit run identifier.
+        split_override: Optional pre-built SplitManifest (used by re-audits of corrected
+            training views so the locked val/test partitions are reused unchanged).
+        persist: When False the result is not written to the runs directory (re-audits).
 
     Returns:
         RunResult dictionary conforming to Shared Contract v1.0 Section 2.8.
@@ -77,7 +82,7 @@ def run_audit(
 
     # Make locked split
     split_start = time.time()
-    split = make_locked_split(ds, cfg)
+    split = split_override if split_override is not None else make_locked_split(ds, cfg)
     split_duration_ms = round((time.time() - split_start) * 1000.0, 2)
 
     # Compute authoritative profile and dynamic capability matrix
@@ -283,6 +288,9 @@ def run_audit(
 
     # Sanitize NaN/inf floats to JSON null
     sanitized_result = _sanitize_floats(run_result)
+
+    if not persist:
+        return sanitized_result
 
     # Persist locally in runs/<run_id>/
     runs_dir = Path(os.environ.get("SMELLSCOPE_HOME", "./runs")) / run_id

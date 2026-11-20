@@ -9,14 +9,16 @@ interface StageConfig {
   num: string;
   label: string;
   path: string;
+  desc?: string;
 }
 
 const STAGES: StageConfig[] = [
-  { id: "DATASET", num: "01", label: "DATASET", path: "/dataset" },
-  { id: "AUDIT", num: "02", label: "AUDIT", path: "/audit" },
-  { id: "FINDINGS", num: "03", label: "FINDINGS", path: "/findings" },
-  { id: "REMEDIATION", num: "04", label: "REMEDIATION (OPT.)", path: "/remediation" },
-  { id: "REPORTS", num: "05", label: "VERIFY & REPORT", path: "/reports" },
+  { id: "DATASET", num: "01", label: "DATASET", path: "/dataset", desc: "Upload, Validate & Split" },
+  { id: "AUDIT", num: "02", label: "AUDIT", path: "/audit", desc: "Statistical Smell Heuristics" },
+  { id: "FINDINGS", num: "03", label: "FINDINGS", path: "/findings", desc: "Smell Matrix & Diagnostics" },
+  { id: "IMPROVEMENT", num: "04", label: "IMPROVEMENT", path: "/improvement", desc: "Intelligent Dataset Repair" },
+  { id: "COMPARISON", num: "05", label: "COMPARISON", path: "/comparison", desc: "Original vs Corrected" },
+  { id: "REPORTS", num: "06", label: "REPORTS", path: "/reports", desc: "Export & Offline Reports" },
 ];
 
 export const WorkflowBar: React.FC = () => {
@@ -35,6 +37,10 @@ export const WorkflowBar: React.FC = () => {
       setActiveStage("AUDIT");
     } else if (p.startsWith("/findings") || p.startsWith("/heatmap") || p.startsWith("/diagnostics") || p.startsWith("/matrix")) {
       setActiveStage("FINDINGS");
+    } else if (p.startsWith("/improvement")) {
+      setActiveStage("IMPROVEMENT");
+    } else if (p.startsWith("/comparison")) {
+      setActiveStage("COMPARISON");
     } else if (p.startsWith("/remediation")) {
       setActiveStage("REMEDIATION");
     } else if (p.startsWith("/reports") || p.startsWith("/export") || p.startsWith("/audit-log")) {
@@ -47,7 +53,8 @@ export const WorkflowBar: React.FC = () => {
     if (st.id === "DATASET" && (p.startsWith("/dataset") || p.startsWith("/ingestion"))) return true;
     if (st.id === "AUDIT" && p.startsWith("/audit")) return true;
     if (st.id === "FINDINGS" && (p.startsWith("/findings") || p.startsWith("/heatmap") || p.startsWith("/diagnostics") || p.startsWith("/matrix"))) return true;
-    if (st.id === "REMEDIATION" && p.startsWith("/remediation")) return true;
+    if (st.id === "IMPROVEMENT" && p.startsWith("/improvement")) return true;
+    if (st.id === "COMPARISON" && p.startsWith("/comparison")) return true;
     if (st.id === "REPORTS" && (p.startsWith("/reports") || p.startsWith("/export") || p.startsWith("/audit-log"))) return true;
     return false;
   };
@@ -56,6 +63,7 @@ export const WorkflowBar: React.FC = () => {
     if (stageId === "DATASET" && activeDatasetId) return true;
     if (stageId === "AUDIT" && latestRunResult) return true;
     if (stageId === "FINDINGS" && latestRunResult) return true;
+    if (stageId === "IMPROVEMENT" && latestRunResult) return true;
     return false;
   };
 

@@ -7,6 +7,8 @@ export type WorkflowStage =
   | "DATASET"
   | "AUDIT"
   | "FINDINGS"
+  | "IMPROVEMENT"
+  | "COMPARISON"
   | "REMEDIATION"
   | "REPORTS"
   // Legacy aliases for backward-compatibility
@@ -37,7 +39,7 @@ interface AuditContextType {
   setLatestRunResult: (res: RunResult | null) => void;
   activeStatus: AuditStatus | null;
   setActiveStatus: (st: AuditStatus | null) => void;
-  
+
   // Dataset Stage Caching & Validation
   datasetMetadata: DatasetMetadata | null;
   setDatasetMetadata: (meta: DatasetMetadata | null) => void;

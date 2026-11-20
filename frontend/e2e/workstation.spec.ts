@@ -5,7 +5,8 @@ async function getOrInitAudit(request: any): Promise<string> {
     const existingResp = await request.get("http://127.0.0.1:8000/api/v1/audits");
     if (existingResp.ok()) {
       const audits = await existingResp.json();
-      const completed = audits.find((a: any) => a.status === "COMPLETED");
+      // Only reuse runs on the planted sample this spec expects (other specs create their own datasets).
+      const completed = audits.find((a: any) => a.status === "COMPLETED" && a.dataset_id === "cic2017_sample_planted");
       if (completed) return completed.run_id;
     }
   } catch (e) {
@@ -171,11 +172,15 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
 
     // Verify RSM card
     await expect(page.getByText("Check Remediation Safety")).toBeVisible();
-    await expect(page.getByText("Remediation Safety Monitor (RSM) Authorization")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/RSM (PASS|WARN|BLOCK)/i)).toBeVisible();
+    await expect(page.getByText("Dataset Safety Check")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("rsm-decision")).toContainText(/(PASS|WARN|BLOCK) —/);
 
-    // Step 11: Apply Approved Remediation
-    const applyBtn = page.getByRole("button", { name: /APPLY APPROVED REMEDIATION/i });
+    // Step 11: Apply Approved Remediation (acknowledge first if RSM warns)
+    const ackBox = page.getByTestId("rsm-ack").locator('input[type="checkbox"]');
+    if (await ackBox.count()) {
+      await ackBox.check();
+    }
+    const applyBtn = page.getByRole("button", { name: /APPLY (APPROVED REMEDIATION|DESPITE WARNINGS)/i });
     await expect(applyBtn).toBeVisible();
     await applyBtn.click();
     await expect(page.getByText("Apply Approved Changes")).toBeVisible();
@@ -233,9 +238,15 @@ test.describe("SmellScope 2.1 Complete Guided Scientific Workflow E2E Verificati
       if (await generatePlanBtn.isVisible()) {
         await generatePlanBtn.click();
         await expect(page.getByText("Repair Plan Preview")).toBeVisible({ timeout: 10000 });
-        const approveBtn = page.getByRole("button", { name: /Approve & Apply Fixes/i });
+        const approveBtn = page.getByRole("button", { name: /Continue to Apply Improvements|Apply Despite Warnings/i });
         await expect(approveBtn).toBeVisible();
+        const ackBox = page.getByTestId("rsm-ack").locator('input[type="checkbox"]');
+        if (await ackBox.count()) {
+          await ackBox.check();
+        }
         await approveBtn.click();
+        await expect(page.getByTestId("rsm-safety-record")).toBeVisible({ timeout: 30000 });
+        await page.getByTestId("goto-comparison").click();
         await expect(page).toHaveURL(/.*\/comparison/);
       } else {
         await page.goto("/comparison");

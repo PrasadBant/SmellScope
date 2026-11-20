@@ -66,6 +66,21 @@ async def get_recommendations(run_id: str):
 
 
 @router.get(
+    "/audits/{run_id}/rsm-records",
+    summary="Chronological RSM safety events (previews, applications, rejections) for a run",
+)
+async def get_rsm_records(run_id: str):
+    """Return the authoritative safety record: pre-application decisions and application outcomes."""
+    job = audit_job_manager.get_job(run_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found.")
+    try:
+        return {"run_id": run_id, "records": remediation_session_manager.get_rsm_records(run_id)}
+    except SmellScopeError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+
+
+@router.get(
     "/audits/{run_id}/scores",
     summary="Get 4-dimension dataset assessment and overall trust score",
 )
@@ -113,9 +128,12 @@ async def apply_repair_plan_endpoint(run_id: str, body: RepairPlanApplyRequest):
         new_view, log_entry, export_meta = remediation_session_manager.apply_repair_plan_action(
             preview_id=body.preview_id,
             approval=body.approval,
+            expected_plan_hash=body.plan_hash,
         )
     except SmellScopeError as exc:
-        raise HTTPException(status_code=400, detail=exc.message)
+        # Structured detail so the UI can show the exact safety reason; never a frontend-only decision.
+        code = 403 if exc.code in ("E_RSM_BLOCK", "E_TEST_INTEGRITY", "E_TEST_LEAK") else 409 if exc.code == "E_STALE_PREVIEW" else 400
+        raise HTTPException(status_code=code, detail={"code": exc.code, "message": exc.message, "details": exc.details})
     return RepairPlanApplyResponse(
         view=new_view,
         change_log_entry=log_entry,

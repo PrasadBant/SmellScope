@@ -57,6 +57,44 @@ type ComparisonData = {
     corrected_view_id: string;
     excluded_features: string[];
   };
+  reaudit?: { performed: boolean; run_id?: string | null; classes_audited: number; runtime_seconds?: number | null };
+  row_diff?: Record<string, number>;
+  feature_diff?: {
+    original_count: number;
+    improved_count: number;
+    features_retained: number;
+    features_excluded: string[];
+    features_transformed: string[];
+  };
+  applied_transformations?: {
+    name: string;
+    problem: string;
+    action: string;
+    affected_records: number;
+    affected_features: string[];
+    reason: string;
+    impact_on_metric: string;
+    negative_side_effect: string;
+  }[];
+  scientific_verdict?: {
+    verdict_type: string;
+    summary: string;
+    scores_improved?: string[];
+    scores_worsened?: string[];
+    scores_unchanged?: string[];
+    problems_corrected: string[];
+    problems_remaining: string[];
+    what_this_proves: string;
+    what_this_does_not_prove: string;
+  };
+};
+
+const VERDICT_STYLE: Record<string, string> = {
+  IMPROVED: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+  MIXED: "border-amber-500/40 bg-amber-500/10 text-amber-300",
+  WORSENED: "border-red-500/40 bg-red-500/10 text-red-300",
+  NO_MEASURABLE_CHANGE: "border-slate-500/40 bg-slate-500/10 text-slate-300",
+  NO_CHANGE: "border-slate-500/40 bg-slate-500/10 text-slate-300",
 };
 
 const DeltaChip: React.FC<{ delta: number | null; invertGood?: boolean }> = ({ delta, invertGood = false }) => {
@@ -301,11 +339,17 @@ export const ComparisonScreen: React.FC = () => {
       </div>
 
       {/* Locked Test Set Banner */}
-      <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 flex items-center gap-3">
-        <Lock className="h-5 w-5 text-emerald-400 shrink-0" />
+      <div
+        className={cn(
+          "rounded-xl border p-4 flex items-center gap-3",
+          integrity.same_test_ids ? "border-emerald-500/40 bg-emerald-500/10" : "border-red-500/40 bg-red-500/10"
+        )}
+        data-testid="test-integrity-banner"
+      >
+        <Lock className={cn("h-5 w-5 shrink-0", integrity.same_test_ids ? "text-emerald-400" : "text-red-400")} />
         <div className="flex-1">
-          <p className="text-sm font-bold text-emerald-300">
-            🔒 Locked Test Set Verified
+          <p className={cn("text-sm font-bold", integrity.same_test_ids ? "text-emerald-300" : "text-red-300")}>
+            {integrity.same_test_ids ? "🔒 Locked Test Set Verified" : "⚠ Test Set Mismatch — comparison is not valid"}
           </p>
           <p className="text-xs text-txt-muted mt-0.5">
             same_test_ids = {String(integrity.same_test_ids)} ·{" "}
@@ -423,6 +467,91 @@ export const ComparisonScreen: React.FC = () => {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Evidence-based verdict & exact changes */}
+      {data.scientific_verdict && (
+        <Card className={cn("border", VERDICT_STYLE[data.scientific_verdict.verdict_type] || VERDICT_STYLE.NO_CHANGE)} data-testid="verdict-card">
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4" />
+              Measured outcome: {data.scientific_verdict.verdict_type.replace(/_/g, " ")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-xs">
+            <p className="text-sm text-txt-primary">{data.scientific_verdict.summary}</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <p className="font-semibold text-emerald-300">Improved</p>
+                <p className="text-txt-muted">{(data.scientific_verdict.scores_improved || []).join(", ") || "none"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-red-300">Worsened</p>
+                <p className="text-txt-muted">{(data.scientific_verdict.scores_worsened || []).join(", ") || "none"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-txt-primary">Unchanged</p>
+                <p className="text-txt-muted">{(data.scientific_verdict.scores_unchanged || []).join(", ") || "none"}</p>
+              </div>
+            </div>
+            {data.scientific_verdict.problems_remaining.length > 0 && (
+              <div>
+                <p className="font-semibold text-txt-primary">Remaining limitations</p>
+                <ul className="list-disc pl-5 text-txt-muted space-y-0.5">
+                  {data.scientific_verdict.problems_remaining.map((p, i) => (
+                    <li key={i}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="text-txt-muted">
+              <span className="font-semibold">Does not show:</span> {data.scientific_verdict.what_this_does_not_prove}
+            </p>
+            {data.reaudit && (
+              <p className="text-[11px] text-txt-muted">
+                {data.reaudit.performed
+                  ? `Corrected-view scores come from a real re-audit (${data.reaudit.classes_audited} class(es), ${data.reaudit.runtime_seconds ?? "?"}s).`
+                  : "No re-audit was run; corrected-view scores have reduced evidence coverage."}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {data.row_diff && data.feature_diff && (
+        <Card data-testid="exact-changes-card">
+          <CardHeader>
+            <CardTitle className="text-sm">Exact changes (original → corrected view)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-xs">
+            <div className="grid gap-3 sm:grid-cols-4">
+              {[
+                ["Training rows", `${data.row_diff.original_rows} → ${data.row_diff.retained_rows}`],
+                ["Rows removed", String(data.row_diff.removed_rows)],
+                ["Features", `${data.feature_diff.original_count} → ${data.feature_diff.improved_count}`],
+                ["Features transformed", String(data.feature_diff.features_transformed.length)],
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-lg border border-border p-3">
+                  <p className="text-txt-muted">{k}</p>
+                  <p className="text-base font-bold text-txt-primary">{v}</p>
+                </div>
+              ))}
+            </div>
+            {data.feature_diff.features_excluded.length > 0 && (
+              <p className="text-txt-muted">
+                <span className="font-semibold text-txt-primary">Removed features:</span> {data.feature_diff.features_excluded.join(", ")}
+              </p>
+            )}
+            {(data.applied_transformations || []).map((t, i) => (
+              <div key={i} className="rounded-lg border border-border p-3 space-y-1">
+                <p className="font-semibold text-txt-primary">{t.name}</p>
+                <p className="text-txt-muted">{t.action}</p>
+                <p className="text-txt-muted"><span className="font-semibold">Why:</span> {t.reason}</p>
+                <p className="text-amber-300/80"><span className="font-semibold">Possible downside:</span> {t.negative_side_effect}</p>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

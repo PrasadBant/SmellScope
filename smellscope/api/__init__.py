@@ -69,6 +69,24 @@ def list_sample_datasets() -> List[Dict[str, Any]]:
             "note": "6,000-row 5-class synthetic benchmark with planted shortcut destination-port and data quality flaws.",
         },
         {
+            "id": "synthetic_planted_sample",
+            "name": "SmellScope Synthetic Planted Shortcut Sample (800 Rows)",
+            "schema_id": "synthetic-planted",
+            "label_col": "label",
+            "benign_label": "benign",
+            "available": (sample_dir / "synthetic_planted_sample.parquet").exists() or (sample_dir / "synthetic_planted_sample.csv").exists(),
+            "note": "800-row controlled planted-shortcut validation benchmark with destination-port shortcut.",
+        },
+        {
+            "id": "sample_cicids2017",
+            "name": "CIC-IDS-2017 Quick Smoke Slice (30 Rows)",
+            "schema_id": "cic-ids-2017",
+            "label_col": "Label",
+            "benign_label": "BENIGN",
+            "available": (sample_dir / "sample_cicids2017.csv").exists(),
+            "note": "Minimal 30-row CIC-IDS-2017 slice for fast smoke testing.",
+        },
+        {
             "id": "unsw_nb15_sample",
             "name": "UNSW-NB15 Sample",
             "schema_id": "unsw-nb15",
@@ -167,9 +185,10 @@ def apply_remediation(
     preview: Dict[str, Any],
     approval: Dict[str, Any],
     cfg: Optional[Dict[str, Any]] = None,
+    expected_plan_hash: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Apply remediation authorized by RSM and advance to new TrainingView."""
-    return _apply_remediation(ds, split, view, preview, approval, cfg)
+    return _apply_remediation(ds, split, view, preview, approval, cfg, expected_plan_hash)
 
 
 def rollback(

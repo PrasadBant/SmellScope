@@ -39,6 +39,22 @@ def list_saved_models():
 @router.post("/save", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
 def save_model(req: ModelSaveRequest):
     """Persist the model trained on the improved dataset view into the versioned model registry."""
+    # Supervised models are not applicable to single-class datasets (no attack traffic to learn from).
+    try:
+        ds_, _ = remediation_session_manager._ensure_initialized(req.run_id)
+        if ds_["df"][ds_["label_col"]].nunique() < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "E_NOT_APPLICABLE",
+                    "message": "NOT_APPLICABLE: the dataset contains a single class, so no supervised model can be trained or saved.",
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # run lookup problems are reported by the normal flow below
+
     # Check if we have active trained model in memory
     trained_artifacts = get_active_trained_model(req.run_id)
 
@@ -47,7 +63,7 @@ def save_model(req: ModelSaveRequest):
         try:
             views = remediation_session_manager.get_views(req.run_id)
             active_view = views[-1] if views else None
-            remediation_session_manager.rebenchmark(req.run_id)
+            remediation_session_manager.execute_rebenchmark(req.run_id)
             trained_artifacts = get_active_trained_model(req.run_id, active_view["view_id"] if active_view else None)
         except Exception as e:
             logger.warning("Could not auto-rebenchmark for model save: %s", e)

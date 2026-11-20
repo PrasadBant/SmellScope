@@ -1,6 +1,7 @@
 seed: 42
 sampling:
   max_rows_per_class: 20000
+  seed: 42
 split:
   train: 0.6
   val: 0.2
@@ -8,13 +9,20 @@ split:
   stratified: true
 runtime:
   budget_seconds: 300
+  degradation_enabled: true
 rsm:
+  # RSM thresholds. Retention values are fractions of the original training rows kept.
+  # These are the single source of truth: the backend and the UI both read them from here.
   policy:
-    min_class_retention: 0.50
-    min_cluster_retention: 0.25
-    max_ablation_features: 10
+    min_class_retention_warn: 0.50     # class kept < 50%  -> WARN
+    min_class_retention_block: 0.20    # class kept < 20%  -> BLOCK
+    min_cluster_retention_warn: 0.25   # cluster (>5 rows) kept < 25% -> WARN
+    min_cluster_retention_block: 0.10  # cluster (>5 rows) kept < 10% -> BLOCK
+    max_ablation_features_warn: 10     # more than 10 features removed -> WARN (no BLOCK threshold)
+    min_total_train_rows_block: 10     # safety floor on remaining training rows
 paths:
   runs: "./runs"
   data: "./data"
   cache: "./cache"
+  cached_results: "./cached_results"
   reports: "./reports"
